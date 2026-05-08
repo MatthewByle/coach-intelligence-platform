@@ -1,16 +1,21 @@
 import streamlit as st
-import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
-st.title("Coach Intelligence Dashboard")
+st.title("Coach Dashboard")
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-stats = conn.read(worksheet="RawStats")
-coaches = conn.read(worksheet="CoachRegistry")
+SPREADSHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
-st.subheader("Coaches")
-st.dataframe(coaches, use_container_width=True)
+stats = conn.read(
+    spreadsheet=SPREADSHEET_ID,
+    worksheet="RawStats"
+)
 
-st.subheader("Team Stats")
-st.dataframe(stats, use_container_width=True)
+coaches = conn.read(
+    spreadsheet=SPREADSHEET_ID,
+    worksheet="CoachRegistry"
+)
+
+st.dataframe(coaches)
+st.dataframe(stats)
