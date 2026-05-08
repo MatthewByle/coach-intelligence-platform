@@ -10,7 +10,7 @@ stats = conn.read(worksheet="RawStats")
 coaches = conn.read(worksheet="CoachRegistry")
 
 st.subheader("Coaches")
-st.dataframe(coaches)
+st.dataframe(coaches, use_container_width=True)
 
 st.subheader("Team Stats")
-st.dataframe(stats)
+st.dataframe(stats, use_container_width=True)
