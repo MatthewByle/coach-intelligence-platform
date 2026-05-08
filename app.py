@@ -14,7 +14,7 @@ stats = conn.read(
 
 coaches = conn.read(
     spreadsheet=SPREADSHEET_ID,
-    worksheet="CoachRegistry"
+    worksheet="Coach_Registry"
 )
 
 st.dataframe(coaches)
