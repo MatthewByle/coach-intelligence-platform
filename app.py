@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 
-st.title("Coach Intelligence Dashboard")
-
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 @st.cache_data
@@ -13,8 +11,10 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
-st.subheader("Coaches")
-st.dataframe(coaches)
+st.title("Coach Intelligence Dashboard")
 
-st.subheader("Team Stats")
-st.dataframe(stats)
+# --- COACH SELECTOR ---
+coach_list = coaches["Coach_Name"].dropna().unique()
+selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
+
+st.write("Selected Coach:", selected_coach)
