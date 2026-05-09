@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 st.set_page_config(layout="wide")
-st.title("Coach Intelligence Dashboard")
+st.title("NHL Head Coach Value")
 
 # =========================
 # LOAD DATA
