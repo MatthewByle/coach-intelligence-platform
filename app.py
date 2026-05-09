@@ -84,9 +84,9 @@ st.line_chart(
     team_data[["Date", "xG_pct"]].set_index("Date")
 )
 
-offense_score = stats["xGF/60"].rank(pct=True).mean() * 100
+offense_score = stats["xGF_60"].rank(pct=True).mean() * 100
 
-defense_score = (1 - stats["xGA/60"].rank(pct=True)).mean() * 100
+defense_score = (1 - stats["xGA_60"].rank(pct=True)).mean() * 100
 
 team_stats = stats[stats["Team"] == team]
 
