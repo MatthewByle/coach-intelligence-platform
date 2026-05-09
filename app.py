@@ -245,3 +245,69 @@ top_replacement = replacement_df.iloc[0]["Replacement Coach"]
 st.success(
     f"{top_replacement} profiles as the strongest stylistic replacement for {selected_coach}."
 )
+
+st.subheader("Coach Intelligence Summary")
+
+coach_profile = coach_features.loc[selected_coach]
+
+offense = round(coach_profile["xGF_60"], 2)
+defense = round(coach_profile["xGA_60"], 2)
+xg = round(coach_profile["xG_pct"], 2)
+pdo = round(coach_profile["PDO"], 3)
+
+# --- DISPLAY METRICS ---
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("xGF/60", offense)
+col2.metric("xGA/60", defense)
+col3.metric("xG%", xg)
+col4.metric("PDO", pdo)
+
+st.divider()
+
+# --- NARRATIVE ENGINE ---
+narrative = []
+
+# Offensive identity
+if offense > coach_features["xGF_60"].mean():
+    narrative.append(
+        "This coach emphasizes offensive pressure and chance generation."
+    )
+else:
+    narrative.append(
+        "This coach prefers a more controlled offensive structure."
+    )
+
+# Defensive identity
+if defense < coach_features["xGA_60"].mean():
+    narrative.append(
+        "Defensively, their teams suppress chances effectively."
+    )
+else:
+    narrative.append(
+        "Their defensive structure allows elevated scoring opportunities."
+    )
+
+# xG control
+if xg > coach_features["xG_pct"].mean():
+    narrative.append(
+        "Expected-goal control trends above league average."
+    )
+else:
+    narrative.append(
+        "Expected-goal control trends below league average."
+    )
+
+# PDO sustainability
+if pdo > 1.02:
+    narrative.append(
+        "Performance may be inflated by unusually strong PDO results."
+    )
+elif pdo < 0.98:
+    narrative.append(
+        "Results may be partially suppressed by poor PDO variance."
+    )
+
+# --- OUTPUT NARRATIVE ---
+for sentence in narrative:
+    st.write("•", sentence)
