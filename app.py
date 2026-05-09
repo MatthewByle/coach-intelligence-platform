@@ -16,7 +16,16 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
-coach_row = coaches[coaches["Head Coach"] == selected_coach].iloc[0]
+coaches.columns = coaches.columns.str.strip()
+coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
+
+filtered = coaches[coaches["Head Coach"].astype(str).str.strip() == selected_coach]
+
+if filtered.empty:
+    st.error("Coach not found in registry. Check spelling or sheet formatting.")
+    st.stop()
+
+coach_row = filtered.iloc[0]
 
 team = coach_row["Team Name"]
 hire_date = coach_row["Hire Date"]
@@ -38,7 +47,7 @@ if st.checkbox("Show raw data (debug)"):
     st.write(coaches.columns)
     st.dataframe(coaches.head())
 
-coach_list = coaches["Head Coach"].dropna().unique()
+coach_list = coaches["Head Coach"].dropna().astype(str).str.strip().unique()
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
 st.write("Selected Coach:", selected_coach)
@@ -361,3 +370,6 @@ st.markdown(f"""
 **System Identity**
 This coach profiles as a **{coach_row["Archetype"]}**, combining their statistical profile with league clustering patterns.
 """)
+
+st.write("Selected:", selected_coach)
+st.write("Available coaches sample:", coach_list[:10])
