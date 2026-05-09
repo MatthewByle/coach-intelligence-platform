@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 @st.cache_data
@@ -113,3 +116,29 @@ st.metric("Defense Score", round(defense_score, 1))
 st.metric("Coach Score", round(coach_score, 1))
 
 st.success(f"Coach Grade: {grade}")
+
+coach_features = stats.groupby("Coach")[[
+    "xGF_60",
+    "xGA_60",
+    "xG_pct",
+    "PDO"
+]].mean().dropna()
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(coach_features)
+
+kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+coach_features["Cluster"] = kmeans.fit_predict(X_scaled)
+
+coach_cluster_map = coach_features["Cluster"]
+
+st.subheader("Coach DNA Map (Clustering)")
+
+selected_cluster = coach_features.loc[selected_coach, "Cluster"]
+
+st.write(f"Coach Cluster ID: {selected_cluster}")
+
+cluster_coaches = coach_features[coach_features["Cluster"] == selected_cluster].index.tolist()
+
+st.write("Similar Coaches:")
+st.write(cluster_coaches)
