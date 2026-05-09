@@ -60,3 +60,5 @@ st.subheader("System Impact (Before vs After)")
 st.metric("xG% Before", round(before_xg, 3))
 st.metric("xG% After", round(after_xg, 3))
 st.metric("Impact Delta", round(delta, 3))
+
+stats.columns = stats.columns.str.strip()
