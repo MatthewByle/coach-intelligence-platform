@@ -56,19 +56,22 @@ team_data = team_data.sort_values("Date")
 
 hire_date = pd.to_datetime(hire_date)
 
-before = team_data[team_data["Date"] < hire_date].tail(15)
-after = team_data[team_data["Date"] >= hire_date].head(15)
+import numpy as np
 
-before_xg = before["xG_pct"].mean() if not before.empty else None
-after_xg = after["xG_pct"].mean() if not after.empty else None
+before_xg = before["xG_pct"].mean()
+after_xg = after["xG_pct"].mean()
+
+# convert to safe floats
+before_xg = float(before_xg) if pd.notna(before_xg) else None
+after_xg = float(after_xg) if pd.notna(after_xg) else None
 
 if before_xg is None or after_xg is None:
-    st.warning("Not enough data for full before/after comparison")
-    impact_delta = None
+    delta = None
 else:
-    impact_delta = after_xg - before_xg
+    delta = after_xg - before_xg
 
-delta = after_xg - before_xg
+if len(before) < 10 or len(after) < 10:
+    st.warning("Limited sample size: before/after comparison may be unstable")
 
 st.subheader("System Impact (Before vs After)")
 
