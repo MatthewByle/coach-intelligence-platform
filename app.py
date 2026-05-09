@@ -13,11 +13,8 @@ coaches = load_data("Coach_Registry")
 
 st.title("Coach Intelligence Dashboard")
 
-# --- COACH SELECTOR ---
-coach_list = coaches["Coach_Name"].dropna().unique()
-selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
-
-st.write("Selected Coach:", selected_coach)
+st.write("Coach Columns:")
+st.write(coaches.columns)
 
 # --- COACH CONTEXT ---
 coach_row = coaches[coaches["Coach"] == selected_coach].iloc[0]
