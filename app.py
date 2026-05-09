@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
@@ -10,12 +11,6 @@ from sklearn.metrics.pairwise import euclidean_distances
 # =========================================================
 st.set_page_config(page_title="NHL Coaching", layout="wide")
 st.title("NHL Coaching")
-
-# =========================================================
-# SESSION
-# =========================================================
-if "active_coach" not in st.session_state:
-    st.session_state.active_coach = None
 
 # =========================================================
 # LOAD DATA
@@ -53,23 +48,19 @@ stats["Date"] = pd.to_datetime(stats.get("Date"), errors="coerce")
 # =========================================================
 coach_list = sorted(coaches["Head Coach"].dropna().unique())
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
-st.session_state.active_coach = selected_coach
-
-active_coach = st.session_state.active_coach
 
 # =========================================================
 # LOOKUP
 # =========================================================
-coach_row = coaches[coaches["Head Coach"] == active_coach].iloc[0]
+coach_row = coaches[coaches["Head Coach"] == selected_coach].iloc[0]
 team = coach_row["Team Name"]
 
 team_stats = stats[stats["Team"] == team]
-coach_games = stats[stats["Coach"] == active_coach].copy()
+coach_games = stats[stats["Coach"] == selected_coach]
 
 # =========================================================
-# 🧠 OPPONENT STRENGTH MODEL (FIXED SAFE VERSION)
+# OPPONENT STRENGTH (SAFE)
 # =========================================================
-
 team_strength = stats.groupby("Team")[["xGF_60", "xGA_60"]].mean()
 
 league_xgf = team_strength["xGF_60"].mean()
@@ -78,34 +69,23 @@ league_xga = team_strength["xGA_60"].mean()
 team_strength["Off_Strength"] = team_strength["xGF_60"] - league_xgf
 team_strength["Def_Strength"] = team_strength["xGA_60"] - league_xga
 
-def get_opponent_strength(row):
+def opp_strength(row):
     opp = row.get("Opponent", None)
     if opp in team_strength.index:
-        return (
-            team_strength.loc[opp, "Def_Strength"]
-            - team_strength.loc[opp, "Off_Strength"]
-        )
+        return team_strength.loc[opp, "Def_Strength"] - team_strength.loc[opp, "Off_Strength"]
     return 0
 
-# IMPORTANT: add to BOTH datasets safely
-stats["Opp_Strength"] = stats.apply(get_opponent_strength, axis=1)
+stats["Opp_Strength"] = stats.apply(opp_strength, axis=1)
 
-coach_games = coach_games.merge(
-    stats[["Coach", "Date", "Opp_Strength"]],
-    on=["Coach", "Date"],
-    how="left"
-)
-
-coach_games["Opp_Strength"] = coach_games["Opp_Strength"].fillna(0)
-
-# =========================================================
-# ADJUSTED METRICS (NOW SAFE)
-# =========================================================
 cg = coach_games.copy()
+
+if "Opp_Strength" not in cg.columns:
+    cg = cg.merge(stats[["Coach", "Date", "Opp_Strength"]], on=["Coach", "Date"], how="left")
+
+cg["Opp_Strength"] = cg["Opp_Strength"].fillna(0)
 
 cg["Adj_xGF"] = cg["xGF_60"] - cg["Opp_Strength"] * 0.4
 cg["Adj_xGA"] = cg["xGA_60"] + cg["Opp_Strength"] * 0.4
-cg["Adj_xG_pct"] = cg["xG_pct"]
 
 # =========================================================
 # DNA MODEL
@@ -116,104 +96,149 @@ coach_features = stats.groupby("Coach")[[
 
 X = StandardScaler().fit_transform(coach_features)
 
-coach_features["Cluster"] = KMeans(
-    n_clusters=4,
-    random_state=42,
-    n_init=10
-).fit_predict(X)
+kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+coach_features["Cluster"] = kmeans.fit_predict(X)
 
 dna_df = coach_features.reset_index()
 
-# =========================================================
-# ROLE SYSTEM
-# =========================================================
-def get_role(cluster):
-    return {
-        0: "Balanced System Coach",
-        1: "Offensive Pressure Coach",
-        2: "Defensive Structure Coach",
-        3: "High-Variance Transition Coach"
-    }.get(cluster, "Unknown")
-
-dna_df["Role"] = dna_df["Cluster"].apply(get_role)
-
-coach_role_map = dna_df[["Coach", "Role"]].copy()
-
-stats = stats.merge(coach_role_map, on="Coach", how="left")
-
-coach_role = coach_role_map.loc[
-    coach_role_map["Coach"] == active_coach, "Role"
-].values[0]
+# highlight cluster coach belongs to
+selected_cluster = dna_df[dna_df["Coach"] == selected_coach]["Cluster"].values[0]
 
 # =========================================================
-# ROLE GRADING
+# SIMILARITY MATRIX
 # =========================================================
-def role_grade(df, coach_name, metric, higher_is_better=True):
-
-    coach_role = coach_role_map.loc[
-        coach_role_map["Coach"] == coach_name, "Role"
-    ].values[0]
-
-    role_group = df[df["Role"] == coach_role]
-
-    values = role_group[metric].dropna()
-    coach_value = df[df["Coach"] == coach_name][metric].mean()
-
-    if len(values) == 0:
-        return "C"
-
-    if higher_is_better:
-        pct = (values <= coach_value).mean()
-    else:
-        pct = (values >= coach_value).mean()
-
-    if pct >= 0.85:
-        return "A"
-    elif pct >= 0.70:
-        return "B"
-    elif pct >= 0.55:
-        return "C"
-    elif pct >= 0.40:
-        return "D"
-    else:
-        return "F"
-
-off_grade = role_grade(stats, active_coach, "xGF_60", True)
-def_grade = role_grade(stats, active_coach, "xGA_60", False)
-sys_grade = role_grade(stats, active_coach, "xG_pct", True)
-
-grade_map = {"A":5,"B":4,"C":3,"D":2,"F":1}
-overall = (grade_map[off_grade] + grade_map[def_grade] + grade_map[sys_grade]) / 3
-
-overall_grade = "A" if overall >= 4.5 else "B" if overall >= 3.5 else "C" if overall >= 2.5 else "D" if overall >= 1.5 else "F"
+distance_df = pd.DataFrame(
+    euclidean_distances(X),
+    index=coach_features.index,
+    columns=coach_features.index
+)
 
 # =========================================================
-# HEADER
+# LAYOUT ORDER (IMPORTANT)
 # =========================================================
-st.subheader(f"Coach: {active_coach}")
+
+# -------------------------
+# COACH HEADER
+# -------------------------
+st.subheader(f"Coach: {selected_coach}")
 st.write(f"Team: **{team}**")
-st.write(f"Role: **{coach_role}**")
 
-# =========================================================
+# -------------------------
 # SCORECARD
-# =========================================================
+# -------------------------
 st.subheader("Coach Scorecard")
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Offense", off_grade)
-c2.metric("Defense", def_grade)
-c3.metric("System", sys_grade)
-c4.metric("Overall", overall_grade)
+off = cg["xGF_60"].mean()
+defn = cg["xGA_60"].mean()
+sys = cg["xG_pct"].mean()
+pdo = cg["PDO"].mean()
 
-# =========================================================
-# SUMMARY (SAFE)
-# =========================================================
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("xGF/60", round(off,2))
+c2.metric("xGA/60", round(defn,2))
+c3.metric("xG%", round(sys,2))
+c4.metric("PDO", round(pdo,3))
+
+# -------------------------
+# AI NARRATIVE
+# -------------------------
 st.subheader("AI Coaching Narrative")
 
-st.write(f"""
-This coach operates as a **{coach_role}** with opponent-adjusted performance signals included.
+st.write(f"• This coach operates within a cluster-based tactical profile (Cluster {selected_cluster}).")
 
-- Offensive profile: {cg['Adj_xGF'].mean():.2f}
-- Defensive profile: {cg['Adj_xGA'].mean():.2f}
-- System consistency evaluated within role cohort
-""")
+if off > coach_features["xGF_60"].mean():
+    st.write("• Above-average offensive generation relative to league coaching baseline.")
+else:
+    st.write("• Offensive output is structurally average or system-dependent.")
+
+if defn < coach_features["xGA_60"].mean():
+    st.write("• Defensive structure suppresses chances effectively.")
+else:
+    st.write("• Defensive structure is more volatile and opponent-dependent.")
+
+# -------------------------
+# TEAM STATS
+# -------------------------
+st.subheader("Team Stats")
+
+team_profile = team_stats[["xGF_60","xGA_60","xG_pct","PDO"]].mean(numeric_only=True)
+
+cols = st.columns(4)
+cols[0].metric("xGF/60", round(team_profile["xGF_60"],2))
+cols[1].metric("xGA/60", round(team_profile["xGA_60"],2))
+cols[2].metric("xG%", round(team_profile["xG_pct"],2))
+cols[3].metric("PDO", round(team_profile["PDO"],3))
+
+# -------------------------
+# SYSTEM IMPACT
+# -------------------------
+st.subheader("System Impact (Before vs After)")
+
+before = team_stats[team_stats["Date"] < team_stats["Date"].median()]
+after = team_stats[team_stats["Date"] >= team_stats["Date"].median()]
+
+before_xg = before["xG_pct"].mean()
+after_xg = after["xG_pct"].mean()
+delta = after_xg - before_xg
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Before", round(before_xg,2))
+c2.metric("After", round(after_xg,2))
+c3.metric("Delta", round(delta,2))
+
+# -------------------------
+# TREND
+# -------------------------
+st.subheader("Team xG% Trend")
+
+st.line_chart(team_stats[["Date","xG_pct"]].dropna().set_index("Date"))
+
+# -------------------------
+# DNA MAP
+# -------------------------
+st.subheader("Coach DNA Map")
+
+fig = px.scatter(
+    dna_df,
+    x="xGF_60",
+    y="xGA_60",
+    color="Cluster",
+    hover_name="Coach",
+    size="xG_pct"
+)
+
+selected = dna_df[dna_df["Coach"] == selected_coach]
+
+fig.add_trace(go.Scatter(
+    x=selected["xGF_60"],
+    y=selected["xGA_60"],
+    mode="markers+text",
+    marker=dict(size=18, color="red"),
+    text=[selected_coach],
+    textposition="top center",
+    name="Selected Coach"
+))
+
+st.plotly_chart(fig, use_container_width=True)
+
+# -------------------------
+# SIMILAR COACHES
+# -------------------------
+st.subheader("Most Similar Coaches")
+
+if selected_coach in distance_df.index:
+    sims = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
+
+    st.dataframe(pd.DataFrame({
+        "Coach": sims.index,
+        "Similarity Score": sims.values.round(2)
+    }))
+
+# -------------------------
+# REPLACEMENTS
+# -------------------------
+st.subheader("Replacement Candidates")
+
+st.dataframe(
+    dna_df[dna_df["Cluster"] == selected_cluster][["Coach"]]
+)
