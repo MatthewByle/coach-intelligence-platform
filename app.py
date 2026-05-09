@@ -30,3 +30,7 @@ st.subheader("Coach Context")
 st.write("Team:", team)
 st.write("Hire Date:", hire_date)
 st.write("Fire Date:", fire_date)
+
+coaches = load_data("Coach_Registry")
+
+st.write(coaches.columns)
