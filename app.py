@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
@@ -162,3 +163,32 @@ X_scaled = scaler.fit_transform(coach_features)
 
 kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
 coach_features["Cluster"] = kmeans.fit_predict(X_scaled)
+
+dna_df = coach_features.reset_index()
+
+st.subheader("Coach DNA Map")
+
+fig = px.scatter(
+    dna_df,
+    x="xGF_60",
+    y="xGA_60",
+    color="Cluster",
+    hover_name="Head Coach",
+    size="xG_pct",
+)
+
+# Highlight selected coach
+selected_row = dna_df[dna_df["Head Coach"] == selected_coach]
+
+if not selected_row.empty:
+    fig.add_scatter(
+        x=selected_row["xGF_60"],
+        y=selected_row["xGA_60"],
+        mode="markers+text",
+        marker=dict(size=18, color="red"),
+        text=["YOU"],
+        textposition="top center",
+        name="Selected Coach"
+    )
+
+st.plotly_chart(fig, use_container_width=True)
