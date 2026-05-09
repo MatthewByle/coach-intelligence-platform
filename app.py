@@ -68,44 +68,21 @@ if "Date" in stats.columns:
     )
 
 # =========================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # =========================================================
 st.sidebar.header("Navigation")
 
-# -------------------------
-# TEAM DROPDOWN
-# -------------------------
-team_list = sorted(
-    coaches["Team Name"]
-    .dropna()
-    .unique()
-)
-
-selected_team = st.sidebar.selectbox(
-    "Select Team",
-    team_list
-)
-
-# -------------------------
-# FILTER COACHES BY TEAM
-# -------------------------
-filtered_coaches = coaches[
-    coaches["Team Name"] == selected_team
-]
-
 coach_list = sorted(
-    filtered_coaches["Head Coach"]
+    coaches["Head Coach"]
     .dropna()
     .unique()
 )
 
-# -------------------------
-# COACH DROPDOWN
-# -------------------------
 selected_coach = st.sidebar.selectbox(
     "Select Coach",
     coach_list
 )
+
 # =========================================================
 # COACH LOOKUP
 # =========================================================
@@ -126,7 +103,7 @@ team_stats = stats[
 # =========================================================
 # COACH HEADER
 # =========================================================
-st.subheader("Head Coach")
+st.subheader("Coach")
 
 header_col1, header_col2 = st.columns([1, 4])
 
@@ -225,7 +202,7 @@ replacement_candidates = (
 # =========================================================
 # SCORECARD
 # =========================================================
-st.subheader("Scorecard")
+st.subheader("Coach Scorecard")
 
 league = stats.copy()
 
@@ -249,18 +226,14 @@ sys_pct = percentile(
 
 def to_grade(p):
 
-    if p >= 0.90:
+    if p >= 0.85:
         return "A"
-
-    elif p >= 0.75:
+    elif p >= 0.70:
         return "B"
-
-    elif p >= 0.50:
+    elif p >= 0.55:
         return "C"
-
-    elif p >= 0.30:
+    elif p >= 0.40:
         return "D"
-
     else:
         return "F"
 
@@ -303,7 +276,7 @@ c4.metric("Overall", overall_grade)
 # =========================================================
 # AI COACHING NARRATIVE
 # =========================================================
-st.subheader("Coaching Summary")
+st.subheader("AI Coaching Narrative")
 
 st.write(f"• Coaching Archetype: {coach_role}")
 
