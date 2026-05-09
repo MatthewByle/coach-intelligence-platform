@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import euclidean_distances
@@ -13,13 +12,13 @@ st.set_page_config(page_title="NHL Coaching", layout="wide")
 st.title("NHL Coaching")
 
 # =========================================================
-# SESSION STATE
+# STATE
 # =========================================================
 if "active_coach" not in st.session_state:
     st.session_state.active_coach = None
 
 # =========================================================
-# DATA
+# LOAD DATA
 # =========================================================
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
@@ -32,7 +31,7 @@ stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
 # =========================================================
-# CLEANING
+# CLEAN
 # =========================================================
 stats.columns = stats.columns.astype(str).str.strip()
 coaches.columns = coaches.columns.astype(str).str.strip()
@@ -45,7 +44,6 @@ if "Coach" not in stats.columns:
 stats["Coach"] = stats["Coach"].astype(str).str.strip()
 coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
 
-# numeric safety
 for col in ["xGF_60", "xGA_60", "xG_pct", "PDO"]:
     if col in stats.columns:
         stats[col] = pd.to_numeric(stats[col], errors="coerce")
@@ -56,35 +54,66 @@ stats["Date"] = pd.to_datetime(stats.get("Date"), errors="coerce")
 # SIDEBAR
 # =========================================================
 coach_list = sorted(coaches["Head Coach"].dropna().unique())
-selected_sidebar_coach = st.sidebar.selectbox("Select Coach", coach_list)
+selected_sidebar = st.sidebar.selectbox("Select Coach", coach_list)
 
 if st.session_state.active_coach is None:
-    st.session_state.active_coach = selected_sidebar_coach
+    st.session_state.active_coach = selected_sidebar
 
 if st.sidebar.button("Reset Focus"):
-    st.session_state.active_coach = selected_sidebar_coach
+    st.session_state.active_coach = selected_sidebar
 
 active_coach = st.session_state.active_coach
 
 # =========================================================
 # COACH LOOKUP
 # =========================================================
-filtered = coaches[coaches["Head Coach"] == active_coach]
-
-if filtered.empty:
-    st.error("Coach not found.")
-    st.stop()
-
-coach_row = filtered.iloc[0]
+coach_row = coaches[coaches["Head Coach"] == active_coach].iloc[0]
 team = coach_row["Team Name"]
 
 team_stats = stats[stats["Team"] == team]
+coach_games = stats[stats["Coach"] == active_coach]
 
 # =========================================================
-# SCORE ENGINE (RESTORED + FIXED)
+# 🧠 OPPONENT ADJUSTED COACHING INDEX (OACI)
 # =========================================================
-offense_score = team_stats["xGF_60"].rank(pct=True).mean() * 100
-defense_score = (1 - team_stats["xGA_60"].rank(pct=True)).mean() * 100
+
+# estimate opponent strength from league context
+team_strength = stats.groupby("Team")["xGA_60"].mean()
+league_mean = team_strength.mean()
+league_std = team_strength.std()
+
+def get_opponent_strength(row):
+    opp_team = row.get("Opponent", None)
+    if opp_team in team_strength:
+        return (team_strength[opp_team] - league_mean) / (league_std + 1e-6)
+    return 0
+
+if "Opponent" in stats.columns:
+    coach_games = coach_games.copy()
+    coach_games["Opp_Strength"] = coach_games.apply(get_opponent_strength, axis=1)
+else:
+    coach_games["Opp_Strength"] = 0
+
+# adjusted metrics
+coach_games["Adj_xGF"] = coach_games["xGF_60"] - coach_games["Opp_Strength"] * 0.5
+coach_games["Adj_xGA"] = coach_games["xGA_60"] + coach_games["Opp_Strength"] * 0.5
+
+oaci_offense = coach_games["Adj_xGF"].mean()
+oaci_defense = coach_games["Adj_xGA"].mean()
+
+# normalize into 0-100 scale
+oaci_offense_score = 50 + (oaci_offense - stats["xGF_60"].mean()) / (stats["xGF_60"].std() + 1e-6) * 15
+oaci_defense_score = 50 + (stats["xGA_60"].mean() - oaci_defense) / (stats["xGA_60"].std() + 1e-6) * 15
+
+oaci_offense_score = max(0, min(100, oaci_offense_score))
+oaci_defense_score = max(0, min(100, oaci_defense_score))
+
+# =========================================================
+# FINAL SCORE + GRADING
+# =========================================================
+offense_score = oaci_offense_score
+defense_score = oaci_defense_score
+
 coach_score = (0.6 * offense_score) + (0.4 * defense_score)
 
 if coach_score >= 80:
@@ -99,75 +128,44 @@ else:
     grade = "F"
 
 # =========================================================
-# HEADER (CLEAN IDENTITY)
+# HEADER
 # =========================================================
 st.subheader(f"Coach: {active_coach}")
 st.write(f"Team: **{team}**")
 
 # =========================================================
-# COACH SCORECARD (RESTORED)
+# SCORECARD (NOW REAL)
 # =========================================================
 st.subheader("Coach Scorecard")
 
 c1, c2, c3 = st.columns(3)
-c1.metric("Offense Score", round(offense_score, 1))
-c2.metric("Defense Score", round(defense_score, 1))
+c1.metric("Offense (Adj)", round(offense_score, 1))
+c2.metric("Defense (Adj)", round(defense_score, 1))
 c3.metric("Coach Score", round(coach_score, 1))
 
 st.success(f"Grade: {grade}")
 
 # =========================================================
-# TEAM STATS (CLEAN UI - NO DROPDOWN FEEL)
+# TEAM STATS
 # =========================================================
 st.subheader("Team Stats")
 
-coach_profile = stats[stats["Coach"] == active_coach][
-    ["xGF_60", "xGA_60", "xG_pct", "PDO"]
-].mean(numeric_only=True)
+profile = team_stats[["xGF_60", "xGA_60", "xG_pct", "PDO"]].mean(numeric_only=True)
 
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric("xGF/60", round(coach_profile["xGF_60"], 2))
-col2.metric("xGA/60", round(coach_profile["xGA_60"], 2))
-col3.metric("xG%", round(coach_profile["xG_pct"], 2))
-col4.metric("PDO", round(coach_profile["PDO"], 3))
+cols = st.columns(4)
+cols[0].metric("xGF/60", round(profile["xGF_60"], 2))
+cols[1].metric("xGA/60", round(profile["xGA_60"], 2))
+cols[2].metric("xG%", round(profile["xG_pct"], 2))
+cols[3].metric("PDO", round(profile["PDO"], 3))
 
 # =========================================================
-# SYSTEM IMPACT
-# =========================================================
-st.subheader("System Impact")
-
-before = team_stats.head(15)
-after = team_stats.tail(15)
-
-before_xg = before["xG_pct"].mean()
-after_xg = after["xG_pct"].mean()
-
-delta = after_xg - before_xg if pd.notna(before_xg) and pd.notna(after_xg) else None
-
-c1, c2, c3 = st.columns(3)
-c1.metric("xG% Before", round(before_xg, 3) if pd.notna(before_xg) else "N/A")
-c2.metric("xG% After", round(after_xg, 3) if pd.notna(after_xg) else "N/A")
-c3.metric("Impact", round(delta, 3) if delta is not None else "N/A")
-
-# =========================================================
-# TEAM TREND (FULL SEASON FIXED)
-# =========================================================
-st.subheader("Team xG% Trend")
-
-if "Date" in stats.columns:
-    trend = team_stats.dropna(subset=["Date"]).sort_values("Date")
-    st.line_chart(trend.set_index("Date")["xG_pct"])
-
-# =========================================================
-# MODEL
+# DNA MODEL
 # =========================================================
 coach_features = stats.groupby("Coach")[[
     "xGF_60", "xGA_60", "xG_pct", "PDO"
 ]].mean().dropna()
 
-scaler = StandardScaler()
-X = scaler.fit_transform(coach_features)
+X = StandardScaler().fit_transform(coach_features)
 
 coach_features["Cluster"] = KMeans(
     n_clusters=4,
@@ -184,7 +182,7 @@ distance_df = pd.DataFrame(
 dna_df = coach_features.reset_index()
 
 # =========================================================
-# DNA MAP (STABLE + INTERACTIVE STYLE)
+# DNA MAP
 # =========================================================
 st.subheader("Coach DNA Map")
 
@@ -197,7 +195,6 @@ fig.add_trace(go.Scatter(
     text=dna_df["Coach"],
     hovertemplate="<b>%{text}</b><extra></extra>",
     marker=dict(size=10, opacity=0.4),
-    name="Coaches"
 ))
 
 active_point = dna_df[dna_df["Coach"] == active_coach]
@@ -209,11 +206,10 @@ if not active_point.empty:
         mode="markers+text",
         marker=dict(size=18, color="red"),
         text=[active_coach],
-        textposition="top center",
-        name="Selected"
+        textposition="top center"
     ))
 
-fig.update_layout(hovermode="closest", legend=dict(orientation="h"))
+fig.update_layout(hovermode="closest", showlegend=False)
 
 st.plotly_chart(fig, use_container_width=True)
 
@@ -225,45 +221,27 @@ st.subheader("Most Similar Coaches")
 if active_coach in distance_df.index:
     sims = distance_df[active_coach].sort_values().drop(active_coach).head(5)
 
-    sim_df = pd.DataFrame({
+    st.dataframe(pd.DataFrame({
         "Coach": sims.index,
-        "Similarity": sims.values.round(2)
-    })
-
-    st.dataframe(sim_df, use_container_width=True)
+        "Score": sims.values.round(2)
+    }))
 
 # =========================================================
-# REPLACEMENT CANDIDATES
+# REPLACEMENTS
 # =========================================================
 st.subheader("Replacement Candidates")
 
-replacement = coach_features.sort_values("xG_pct", ascending=False).head(5)
+replacements = coach_features.sort_values("xG_pct", ascending=False).head(5)
 
-rep_df = replacement.reset_index()[["Coach"]]
-
-st.dataframe(rep_df, use_container_width=True)
+st.dataframe(replacements.reset_index()[["Coach"]])
 
 # =========================================================
-# AI NARRATIVE (RESTORED)
+# AI SUMMARY
 # =========================================================
 st.subheader("Coaching Summary")
 
-narrative = []
-
-if coach_profile["xGF_60"] > coach_features["xGF_60"].mean():
-    narrative.append("Offensive system leans aggressive and chance-driven.")
-else:
-    narrative.append("Offensive structure is controlled and possession-oriented.")
-
-if coach_profile["xGA_60"] < coach_features["xGA_60"].mean():
-    narrative.append("Defensive structure suppresses opponent creation.")
-else:
-    narrative.append("Defensive structure allows higher event volume.")
-
-if coach_profile["xG_pct"] > coach_features["xG_pct"].mean():
-    narrative.append("Team controls expected goals above league baseline.")
-else:
-    narrative.append("Expected goal control is below league baseline.")
-
-for line in narrative:
-    st.write("•", line)
+st.write(f"""
+- Offensive profile is {'above' if offense_score > 50 else 'below'} adjusted baseline  
+- Defensive profile is {'strong' if defense_score > 50 else 'weak'} relative to opponent strength  
+- System grade: **{grade}**
+""")
