@@ -18,3 +18,15 @@ coach_list = coaches["Coach_Name"].dropna().unique()
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
 st.write("Selected Coach:", selected_coach)
+
+# --- COACH CONTEXT ---
+coach_row = coaches[coaches["Coach_Name"] == selected_coach].iloc[0]
+
+team = coach_row["Team"]
+hire_date = coach_row["Hire_Date"]
+fire_date = coach_row["Fire_Date"]
+
+st.subheader("Coach Context")
+st.write("Team:", team)
+st.write("Hire Date:", hire_date)
+st.write("Fire Date:", fire_date)
