@@ -18,3 +18,19 @@ st.write(coaches.columns)
 
 st.write("Coach Registry Preview:")
 st.dataframe(coaches.head())
+
+coach_list = coaches["Head Coach"].dropna().unique()
+selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
+
+st.write("Selected Coach:", selected_coach)
+
+coach_row = coaches[coaches["Head Coach"] == selected_coach].iloc[0]
+
+team = coach_row["Team Name"]
+hire_date = coach_row["Hire Date"]
+fire_date = coach_row["Fire Date"]
+
+st.subheader("Coach Context")
+st.write("Team:", team)
+st.write("Hire Date:", hire_date)
+st.write("Fire Date:", fire_date)
