@@ -6,16 +6,15 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import euclidean_distances
 
-# -----------------------------
-# PAGE
-# -----------------------------
+# =========================================================
+# PAGE SETUP
+# =========================================================
 st.set_page_config(page_title="NHL Coaching", layout="wide")
-
 st.title("NHL Coaching")
 
-# -----------------------------
-# DATA
-# -----------------------------
+# =========================================================
+# LOAD DATA
+# =========================================================
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 @st.cache_data
@@ -26,9 +25,9 @@ def load_data(sheet):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
-# -----------------------------
+# =========================================================
 # CLEAN DATA
-# -----------------------------
+# =========================================================
 stats.columns = stats.columns.astype(str).str.strip()
 coaches.columns = coaches.columns.astype(str).str.strip()
 
@@ -49,9 +48,9 @@ coaches["Team Name"] = coaches["Team Name"].astype(str).str.strip()
 stats["Coach"] = stats["Coach"].astype(str).str.strip()
 stats["Team"] = stats["Team"].astype(str).str.strip()
 
-# -----------------------------
+# =========================================================
 # SIDEBAR
-# -----------------------------
+# =========================================================
 team_list = sorted(coaches["Team Name"].dropna().unique())
 
 selected_team = st.sidebar.selectbox(
@@ -68,9 +67,9 @@ else:
 
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
-# -----------------------------
-# LOOKUP
-# -----------------------------
+# =========================================================
+# COACH LOOKUP
+# =========================================================
 coach_row = coaches[coaches["Head Coach"] == selected_coach]
 
 if coach_row.empty:
@@ -82,9 +81,9 @@ coach_row = coach_row.iloc[0]
 team = coach_row["Team Name"]
 hire_date = pd.to_datetime(coach_row.get("Hire Date", None), errors="coerce")
 
-# -----------------------------
-# TEAM DATA
-# -----------------------------
+# =========================================================
+# TEAM SPLIT
+# =========================================================
 team_data = stats[stats["Team"] == team].sort_values("Date")
 
 before = team_data[team_data["Date"] < hire_date].tail(25)
@@ -99,9 +98,9 @@ delta = (
     else None
 )
 
-# -----------------------------
-# COACH FEATURES
-# -----------------------------
+# =========================================================
+# COACH FEATURES MODEL
+# =========================================================
 coach_features = stats.groupby("Coach")[[
     "xGF_60", "xGA_60", "xG_pct", "PDO"
 ]].mean().dropna()
@@ -119,7 +118,7 @@ distance_df = pd.DataFrame(
 )
 
 # =========================================================
-# 1. COACH TITLE
+# 1. COACH HEADER
 # =========================================================
 st.subheader("Coach")
 st.markdown(f"## {selected_coach}")
@@ -181,24 +180,77 @@ if not team_data.empty:
 st.divider()
 
 # =========================================================
-# 6. DNA MAP
+# 6. DNA MAP (FULL HIGHLIGHT SYSTEM)
 # =========================================================
 st.subheader("Coach DNA Map")
 
+dna_df = coach_features.reset_index()
+
 fig = px.scatter(
-    coach_features.reset_index(),
+    dna_df,
     x="xGF_60",
     y="xGA_60",
     color="Cluster",
     hover_name="Coach"
 )
 
+# -------------------------
+# SELECTED COACH (YOU)
+# -------------------------
+selected_point = dna_df[dna_df["Coach"] == selected_coach]
+
+if not selected_point.empty:
+    fig.add_scatter(
+        x=selected_point["xGF_60"],
+        y=selected_point["xGA_60"],
+        mode="markers+text",
+        marker=dict(size=18),
+        text=["YOU"],
+        textposition="top center",
+        name="Selected Coach"
+    )
+
+# -------------------------
+# SIMILAR COACHES (GREEN)
+# -------------------------
+if selected_coach in distance_df.index:
+    similar = (
+        distance_df[selected_coach]
+        .sort_values()
+        .drop(selected_coach)
+        .head(5)
+        .index
+    )
+
+    sim_df = dna_df[dna_df["Coach"].isin(similar)]
+
+    fig.add_scatter(
+        x=sim_df["xGF_60"],
+        y=sim_df["xGA_60"],
+        mode="markers",
+        marker=dict(size=14),
+        name="Similar Coaches"
+    )
+
+# -------------------------
+# REPLACEMENT COACHES (BLUE)
+# -------------------------
+replacement = coach_features.sort_values("xG_pct", ascending=False).head(5).index
+
+rep_df = dna_df[dna_df["Coach"].isin(replacement)]
+
+fig.add_scatter(
+    x=rep_df["xGF_60"],
+    y=rep_df["xGA_60"],
+    mode="markers",
+    marker=dict(size=14),
+    name="Replacement Candidates"
+)
+
 st.plotly_chart(fig, use_container_width=True)
 
-st.divider()
-
 # =========================================================
-# 7. SIMILAR COACHES
+# 7. SIMILAR COACHES TABLE
 # =========================================================
 st.subheader("Most Similar Coaches")
 
@@ -210,17 +262,14 @@ if selected_coach in distance_df.index:
         hide_index=True
     )
 
-st.divider()
-
 # =========================================================
-# 8. REPLACEMENTS
+# 8. REPLACEMENTS TABLE
 # =========================================================
 st.subheader("Replacement Candidates")
 
-if selected_coach in coach_features.index:
-    rep = coach_features.sort_values("xG_pct", ascending=False).head(5)
+rep_table = coach_features.sort_values("xG_pct", ascending=False).head(5)
 
-    st.dataframe(
-        pd.DataFrame({"Coach": rep.index}),
-        hide_index=True
-    )
+st.dataframe(
+    pd.DataFrame({"Coach": rep_table.index}),
+    hide_index=True
+)
