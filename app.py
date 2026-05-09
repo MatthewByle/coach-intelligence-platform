@@ -79,5 +79,5 @@ st.write("After games:", len(after))
 st.subheader("Team xG% Trend (Season)")
 
 st.line_chart(
-    team_data[["Date", "xG%"]].set_index("Date")
+    team_data[["Date", "xG_pct"]].set_index("Date")
 )
