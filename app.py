@@ -7,39 +7,34 @@ from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import euclidean_distances
 
 # -----------------------------
-# PAGE CONFIG
+# PAGE
 # -----------------------------
 st.set_page_config(page_title="NHL Coaching", layout="wide")
 
 st.title("NHL Coaching")
 
 # -----------------------------
-# LOAD DATA
+# DATA
 # -----------------------------
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 @st.cache_data
-def load_data(sheet_name):
-    url = (
-        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq"
-        f"?tqx=out:csv&sheet={sheet_name}"
-    )
+def load_data(sheet):
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet}"
     return pd.read_csv(url)
 
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
 # -----------------------------
-# CLEAN DATA (CRITICAL FIXES)
+# CLEAN DATA
 # -----------------------------
 stats.columns = stats.columns.astype(str).str.strip()
 coaches.columns = coaches.columns.astype(str).str.strip()
 
-# remove junk unnamed column
 stats = stats.loc[:, ~stats.columns.str.contains("^Unnamed")]
 stats = stats.loc[:, stats.columns != ""]
 
-# fix missing Date column
 if "Date" not in stats.columns:
     stats = stats.rename(columns={stats.columns[0]: "Date"})
 
@@ -57,13 +52,11 @@ stats["Team"] = stats["Team"].astype(str).str.strip()
 # -----------------------------
 # SIDEBAR
 # -----------------------------
-st.sidebar.header("Filters")
-
-teams = sorted(coaches["Team Name"].dropna().unique())
+team_list = sorted(coaches["Team Name"].dropna().unique())
 
 selected_team = st.sidebar.selectbox(
     "Select Team",
-    ["All Teams"] + teams
+    ["All Teams"] + team_list
 )
 
 if selected_team == "All Teams":
@@ -76,15 +69,15 @@ else:
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
 # -----------------------------
-# COACH LOOKUP
+# LOOKUP
 # -----------------------------
-coach_df = coaches[coaches["Head Coach"] == selected_coach]
+coach_row = coaches[coaches["Head Coach"] == selected_coach]
 
-if coach_df.empty:
+if coach_row.empty:
     st.error("Coach not found")
     st.stop()
 
-coach_row = coach_df.iloc[0]
+coach_row = coach_row.iloc[0]
 
 team = coach_row["Team Name"]
 hire_date = pd.to_datetime(coach_row.get("Hire Date", None), errors="coerce")
@@ -107,7 +100,7 @@ delta = (
 )
 
 # -----------------------------
-# COACH FEATURES MODEL
+# COACH FEATURES
 # -----------------------------
 coach_features = stats.groupby("Coach")[[
     "xGF_60", "xGA_60", "xG_pct", "PDO"
@@ -125,89 +118,71 @@ distance_df = pd.DataFrame(
     columns=coach_features.index
 )
 
-# -----------------------------
-# LAYOUT
-# -----------------------------
-left, right = st.columns([1, 2])
+# =========================================================
+# 1. COACH TITLE
+# =========================================================
+st.subheader("Coach")
+st.markdown(f"## {selected_coach}")
+st.write(f"Team: **{team}**")
 
-# -----------------------------
-# LEFT: COACH PANEL
-# -----------------------------
-with left:
-    st.subheader("Coach")
-    st.markdown(f"## {selected_coach}")
-    st.write(f"**Team:** {team}")
+st.divider()
 
-    coach_games = stats[stats["Coach"] == selected_coach]
+# =========================================================
+# 2. COACH SCORECARD
+# =========================================================
+st.subheader("Coach Scorecard")
 
-    offense = coach_games["xGF_60"].mean()
-    defense = coach_games["xGA_60"].mean()
+coach_games = stats[stats["Coach"] == selected_coach]
 
-    st.subheader("Coach Scorecard")
-    st.metric("Offense", round(offense, 2) if pd.notna(offense) else "N/A")
-    st.metric("Defense", round(defense, 2) if pd.notna(defense) else "N/A")
+offense = coach_games["xGF_60"].mean()
+defense = coach_games["xGA_60"].mean()
 
-    # -----------------------------
-    # RESTORED COACH SUMMARY
-    # -----------------------------
-    st.divider()
-    st.subheader("Coaching Summary")
+col1, col2 = st.columns(2)
+col1.metric("Offense", round(offense, 2) if pd.notna(offense) else "N/A")
+col2.metric("Defense", round(defense, 2) if pd.notna(defense) else "N/A")
 
-    summary = []
+st.divider()
 
-    if offense > coach_features["xGF_60"].mean():
-        summary.append("Above-average offensive system.")
-    else:
-        summary.append("Below-average offensive output.")
+# =========================================================
+# 3. TEAM STATS
+# =========================================================
+st.subheader("Team Stats")
 
-    if defense < coach_features["xGA_60"].mean():
-        summary.append("Strong defensive suppression.")
-    else:
-        summary.append("Defensive structure allows chances.")
+team_summary = stats[stats["Team"] == team]
 
-    if pd.notna(delta):
-        if delta > 0:
-            summary.append("Team performance improved post-hire.")
-        else:
-            summary.append("Team performance declined post-hire.")
+col1, col2, col3 = st.columns(3)
+col1.metric("xGF/60", round(team_summary["xGF_60"].mean(), 2))
+col2.metric("xGA/60", round(team_summary["xGA_60"].mean(), 2))
+col3.metric("PDO", round(team_summary["PDO"].mean(), 3))
 
-    for s in summary:
-        st.write("•", s)
+st.divider()
 
-# -----------------------------
-# RIGHT: SYSTEM + TEAM
-# -----------------------------
-with right:
-    st.subheader("System Impact")
+# =========================================================
+# 4. SYSTEM IMPACT
+# =========================================================
+st.subheader("System Impact")
 
-    col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
-    col1.metric("xG% Before", round(before_xg, 3) if before_xg else "N/A")
-    col2.metric("xG% After", round(after_xg, 3) if after_xg else "N/A")
-    col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A")
+col1.metric("xG% Before", round(before_xg, 3) if before_xg else "N/A")
+col2.metric("xG% After", round(after_xg, 3) if after_xg else "N/A")
+col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A")
 
-    st.divider()
+st.divider()
 
-    st.subheader("Team xG% Trend")
+# =========================================================
+# 5. TREND
+# =========================================================
+st.subheader("Team xG% Trend")
 
-    if not team_data.empty:
-        st.line_chart(team_data.set_index("Date")["xG_pct"])
+if not team_data.empty:
+    st.line_chart(team_data.set_index("Date")["xG_pct"])
 
-    # -----------------------------
-    # RESTORED TEAM STATS SECTION
-    # -----------------------------
-    st.divider()
-    st.subheader("Team Stats")
+st.divider()
 
-    team_summary = stats[stats["Team"] == team]
-
-    st.metric("Avg xGF/60", round(team_summary["xGF_60"].mean(), 2))
-    st.metric("Avg xGA/60", round(team_summary["xGA_60"].mean(), 2))
-    st.metric("Avg PDO", round(team_summary["PDO"].mean(), 3))
-
-# -----------------------------
-# DNA MAP
-# -----------------------------
+# =========================================================
+# 6. DNA MAP
+# =========================================================
 st.subheader("Coach DNA Map")
 
 fig = px.scatter(
@@ -220,9 +195,11 @@ fig = px.scatter(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# -----------------------------
-# SIMILAR COACHES (CLEAN)
-# -----------------------------
+st.divider()
+
+# =========================================================
+# 7. SIMILAR COACHES
+# =========================================================
 st.subheader("Most Similar Coaches")
 
 if selected_coach in distance_df.index:
@@ -233,9 +210,11 @@ if selected_coach in distance_df.index:
         hide_index=True
     )
 
-# -----------------------------
-# REPLACEMENTS (CLEAN)
-# -----------------------------
+st.divider()
+
+# =========================================================
+# 8. REPLACEMENTS
+# =========================================================
 st.subheader("Replacement Candidates")
 
 if selected_coach in coach_features.index:
