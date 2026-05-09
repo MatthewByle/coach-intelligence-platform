@@ -103,7 +103,7 @@ team_stats = stats[
 # =========================================================
 # COACH HEADER
 # =========================================================
-st.subheader("Coach")
+st.subheader("Head Coach")
 
 header_col1, header_col2 = st.columns([1, 4])
 
@@ -202,7 +202,7 @@ replacement_candidates = (
 # =========================================================
 # SCORECARD
 # =========================================================
-st.subheader("Coach Scorecard")
+st.subheader("Scorecard")
 
 league = stats.copy()
 
@@ -280,7 +280,7 @@ c4.metric("Overall", overall_grade)
 # =========================================================
 # AI COACHING NARRATIVE
 # =========================================================
-st.subheader("AI Coaching Narrative")
+st.subheader("Coaching Summary")
 
 st.write(f"• Coaching Archetype: {coach_role}")
 
