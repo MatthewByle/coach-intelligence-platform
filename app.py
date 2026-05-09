@@ -84,6 +84,24 @@ team_data = stats[stats["Team"] == team].copy()
 before = team_data[team_data["Date"] < hire_date].tail(15)
 after = team_data[team_data["Date"] >= hire_date].head(15)
 
+team_profile = team_data[[
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]].mean()
+
+league_avg = stats[[
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]].mean()
+
+team_needs = pd.Series({
+    "offense_need": league_avg["xGF_60"] - team_profile["xGF_60"],
+    "defense_need": team_profile["xGA_60"] - league_avg["xGA_60"],
+    "structure_need": league_avg["xG_pct"] - team_profile["xG_pct"]
+})
+
 # =========================
 # BEFORE / AFTER ANALYSIS
 # =========================
@@ -188,38 +206,36 @@ st.plotly_chart(fig, use_container_width=True)
 # =========================
 # SIMILARITY ENGINE
 # =========================
-distance_matrix = euclidean_distances(X_scaled)
+st.subheader("Replacement Candidates (Team Fit Model)")
 
-distance_df = pd.DataFrame(
-    distance_matrix,
-    index=coach_features.index,
-    columns=coach_features.index
-)
+replacements = replacement_scores.sort_values("Fit Score", ascending=False).head(5)
 
-st.subheader("Most Similar Coaches")
+replacement_df = replacements.reset_index()[[
+    "Head Coach",
+    "Fit Score",
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]]
 
-if selected_coach in distance_df.index:
-    sims = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
-
-    st.dataframe(pd.DataFrame({
-        "Coach": sims.index,
-        "Similarity": sims.values.round(2)
-    }))
+st.dataframe(replacement_df)
 
 # =========================
 # REPLACEMENT ENGINE
 # =========================
-st.subheader("Replacement Candidates")
+replacement_scores = coach_features.copy()
 
-if selected_coach in distance_df.index:
-    replacements = distance_df[selected_coach].sort_values().drop(selected_coach).head(3)
+# Normalize coach strengths relative to league
+replacement_scores["offense_strength"] = replacement_scores["xGF_60"] - league_avg["xGF_60"]
+replacement_scores["defense_strength"] = league_avg["xGA_60"] - replacement_scores["xGA_60"]
+replacement_scores["structure_strength"] = replacement_scores["xG_pct"] - league_avg["xG_pct"]
 
-    replacement_df = pd.DataFrame({
-        "Coach": replacements.index,
-        "Fit Score": (100 - replacements.values * 10).round(1)
-    })
-
-    st.dataframe(replacement_df)
+# Fit calculation (TEAM NEED MATCHING)
+replacement_scores["Fit Score"] = (
+    team_needs["offense_need"] * replacement_scores["offense_strength"] +
+    team_needs["defense_need"] * replacement_scores["defense_strength"] +
+    team_needs["structure_need"] * replacement_scores["structure_strength"]
+)
 
 # =========================
 # NARRATIVE LAYER
