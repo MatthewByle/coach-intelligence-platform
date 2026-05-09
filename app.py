@@ -35,6 +35,11 @@ st.write("Team:", team)
 st.write("Hire Date:", hire_date)
 st.write("Fire Date:", fire_date)
 
+st.subheader("Coach Context")
+st.write("Team:", team)
+st.write("Hire Date:", hire_date)
+st.write("Fire Date:", fire_date)
+
 stats["Date"] = pd.to_datetime(stats["Date"])
 
 team_data = stats[stats["Team Name"] == team].copy()
