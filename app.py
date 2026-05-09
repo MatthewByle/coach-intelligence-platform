@@ -62,3 +62,22 @@ st.metric("xG% After", round(after_xg, 3))
 st.metric("Impact Delta", round(delta, 3))
 
 stats.columns = stats.columns.str.strip()
+
+st.subheader("Coach Performance Summary")
+
+if delta > 0:
+    st.success("System improved under this coach")
+elif delta < 0:
+    st.error("System declined under this coach")
+else:
+    st.info("No measurable change")
+
+st.write("Sample sizes:")
+st.write("Before games:", len(before))
+st.write("After games:", len(after))
+
+st.subheader("Team xG% Trend (Season)")
+
+st.line_chart(
+    team_data[["Date", "xG%"]].set_index("Date")
+)
