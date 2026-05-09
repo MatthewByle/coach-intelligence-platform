@@ -11,6 +11,8 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
+stats.columns = stats.columns.str.strip()
+
 st.title("Coach Intelligence Dashboard")
 
 st.write("Coach Registry Columns:")
@@ -88,8 +90,8 @@ defense_score = (1 - stats["xGA/60"].rank(pct=True)).mean() * 100
 
 team_stats = stats[stats["Team"] == team]
 
-offense_score = team_stats["xGF/60"].rank(pct=True).mean() * 100
-defense_score = (1 - team_stats["xGA/60"].rank(pct=True)).mean() * 100
+offense_score = team_stats["xGF_60"].rank(pct=True).mean() * 100
+defense_score = (1 - team_stats["xGA_60"].rank(pct=True)).mean() * 100
 
 coach_score = (0.6 * offense_score) + (0.4 * defense_score)
 
