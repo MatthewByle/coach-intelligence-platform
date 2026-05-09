@@ -142,3 +142,6 @@ cluster_coaches = coach_features[coach_features["Cluster"] == selected_cluster].
 
 st.write("Similar Coaches:")
 st.write(cluster_coaches)
+
+st.write("Selected coach:", selected_coach)
+st.write("Coach feature index sample:", coach_features.index.tolist()[:10])
