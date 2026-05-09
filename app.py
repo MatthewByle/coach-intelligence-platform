@@ -1,19 +1,25 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import euclidean_distances
 
 # =========================================================
-# PAGE SETUP
+# PAGE
 # =========================================================
 st.set_page_config(page_title="NHL Coaching", layout="wide")
 st.title("NHL Coaching")
 
 # =========================================================
-# LOAD DATA
+# SESSION STATE (CLICK-STYLE SELECTION SIMULATION)
+# =========================================================
+if "focus_coach" not in st.session_state:
+    st.session_state.focus_coach = None
+
+# =========================================================
+# DATA
 # =========================================================
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
@@ -44,62 +50,26 @@ for col in ["xGF_60", "xGA_60", "xG_pct", "PDO"]:
         stats[col] = pd.to_numeric(stats[col], errors="coerce")
 
 coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
-coaches["Team Name"] = coaches["Team Name"].astype(str).str.strip()
 stats["Coach"] = stats["Coach"].astype(str).str.strip()
-stats["Team"] = stats["Team"].astype(str).str.strip()
 
 # =========================================================
 # SIDEBAR
 # =========================================================
-team_list = sorted(coaches["Team Name"].dropna().unique())
-
-selected_team = st.sidebar.selectbox(
-    "Select Team",
-    ["All Teams"] + team_list
-)
-
-if selected_team == "All Teams":
-    coach_list = sorted(coaches["Head Coach"].dropna().unique())
-else:
-    coach_list = sorted(
-        coaches[coaches["Team Name"] == selected_team]["Head Coach"].dropna().unique()
-    )
-
+coach_list = sorted(coaches["Head Coach"].dropna().unique())
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
-# =========================================================
-# COACH LOOKUP
-# =========================================================
-coach_row = coaches[coaches["Head Coach"] == selected_coach]
+# Focus lock (click simulation override)
+if st.session_state.focus_coach:
+    active_coach = st.session_state.focus_coach
+else:
+    active_coach = selected_coach
 
-if coach_row.empty:
-    st.error("Coach not found")
-    st.stop()
-
-coach_row = coach_row.iloc[0]
-
-team = coach_row["Team Name"]
-hire_date = pd.to_datetime(coach_row.get("Hire Date", None), errors="coerce")
+# reset focus
+if st.sidebar.button("Reset Focus"):
+    st.session_state.focus_coach = None
 
 # =========================================================
-# TEAM DATA
-# =========================================================
-team_data = stats[stats["Team"] == team].sort_values("Date")
-
-before = team_data[team_data["Date"] < hire_date].tail(25)
-after = team_data[team_data["Date"] >= hire_date].head(25)
-
-before_xg = before["xG_pct"].mean() if not before.empty else None
-after_xg = after["xG_pct"].mean() if not after.empty else None
-
-delta = (
-    (after_xg - before_xg)
-    if before_xg is not None and after_xg is not None
-    else None
-)
-
-# =========================================================
-# COACH FEATURES MODEL
+# MODEL
 # =========================================================
 coach_features = stats.groupby("Coach")[[
     "xGF_60", "xGA_60", "xG_pct", "PDO"
@@ -117,177 +87,117 @@ distance_df = pd.DataFrame(
     columns=coach_features.index
 )
 
-# =========================================================
-# 1. COACH HEADER
-# =========================================================
-st.subheader("Coach")
-st.markdown(f"## {selected_coach}")
-st.write(f"Team: **{team}**")
-
-st.divider()
-
-# =========================================================
-# 2. COACH SCORECARD
-# =========================================================
-st.subheader("Coach Scorecard")
-
-coach_games = stats[stats["Coach"] == selected_coach]
-
-offense = coach_games["xGF_60"].mean()
-defense = coach_games["xGA_60"].mean()
-
-col1, col2 = st.columns(2)
-col1.metric("Offense", round(offense, 2) if pd.notna(offense) else "N/A")
-col2.metric("Defense", round(defense, 2) if pd.notna(defense) else "N/A")
-
-st.divider()
-
-# =========================================================
-# 3. TEAM STATS
-# =========================================================
-st.subheader("Team Stats")
-
-team_summary = stats[stats["Team"] == team]
-
-col1, col2, col3 = st.columns(3)
-col1.metric("xGF/60", round(team_summary["xGF_60"].mean(), 2))
-col2.metric("xGA/60", round(team_summary["xGA_60"].mean(), 2))
-col3.metric("PDO", round(team_summary["PDO"].mean(), 3))
-
-st.divider()
-
-# =========================================================
-# 4. SYSTEM IMPACT
-# =========================================================
-st.subheader("System Impact")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric("xG% Before", round(before_xg, 3) if before_xg else "N/A")
-col2.metric("xG% After", round(after_xg, 3) if after_xg else "N/A")
-col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A")
-
-st.divider()
-
-# =========================================================
-# 5. TREND
-# =========================================================
-st.subheader("Team xG% Trend")
-
-if not team_data.empty:
-    st.line_chart(team_data.set_index("Date")["xG_pct"])
-
-st.divider()
-
-# =========================================================
-# 6. DNA MAP (UPDATED HIGHLIGHTS)
-# =========================================================
-st.subheader("Coach DNA Map")
-
 dna_df = coach_features.reset_index()
 
-fig = px.scatter(
-    dna_df,
-    x="xGF_60",
-    y="xGA_60",
-    hover_name="Coach"
-)
+# =========================================================
+# DNA MAP (SCOUTING-GRADE INTERACTIVE MODE)
+# =========================================================
+st.subheader("Coach DNA Map (Scouting Mode)")
+
+fig = go.Figure()
 
 # -------------------------
-# SELECTED COACH (LABEL = NAME)
+# BASE LAYER
 # -------------------------
-selected_point = dna_df[dna_df["Coach"] == selected_coach]
-
-if not selected_point.empty:
-    fig.add_scatter(
-        x=selected_point["xGF_60"],
-        y=selected_point["xGA_60"],
-        mode="markers+text",
-        marker=dict(size=18),
-        text=[selected_coach],
-        textposition="top center",
-        name="Selected Coach"
-    )
+fig.add_trace(go.Scatter(
+    x=dna_df["xGF_60"],
+    y=dna_df["xGA_60"],
+    mode="markers",
+    text=dna_df["Coach"],
+    hovertemplate="<b>%{text}</b><extra></extra>",
+    marker=dict(size=10, opacity=0.5),
+    name="Coaches"
+))
 
 # -------------------------
-# SIMILAR COACHES (HOVER NAME + SCORE)
+# SIMILAR COACHES
 # -------------------------
-if selected_coach in distance_df.index:
-    similar = (
-        distance_df[selected_coach]
+similar_list = []
+if active_coach in distance_df.index:
+    similar_list = (
+        distance_df[active_coach]
         .sort_values()
-        .drop(selected_coach)
+        .drop(active_coach)
         .head(5)
+        .index
     )
 
-    sim_df = dna_df[dna_df["Coach"].isin(similar.index)].copy()
-    sim_df["score"] = similar.values
+sim_df = dna_df[dna_df["Coach"].isin(similar_list)]
 
-    fig.add_scatter(
-        x=sim_df["xGF_60"],
-        y=sim_df["xGA_60"],
-        mode="markers",
-        marker=dict(size=14),
-        name="Similar Coaches",
-        customdata=sim_df[["Coach", "score"]],
-        hovertemplate="<b>%{customdata[0]}</b><br>Similarity: %{customdata[1]:.2f}<extra></extra>"
-    )
+fig.add_trace(go.Scatter(
+    x=sim_df["xGF_60"],
+    y=sim_df["xGA_60"],
+    mode="markers",
+    marker=dict(size=12, color="green"),
+    name="Similar Coaches",
+    hovertemplate="<b>%{text}</b><extra></extra>",
+    text=sim_df["Coach"]
+))
 
 # -------------------------
-# REPLACEMENT COACHES (HOVER NAME + FIT SCORE)
+# REPLACEMENT COACHES
 # -------------------------
-replacement = coach_features.sort_values("xG_pct", ascending=False).head(5)
+replacement_list = coach_features.sort_values("xG_pct", ascending=False).head(5).index
+rep_df = dna_df[dna_df["Coach"].isin(replacement_list)]
 
-rep_df = dna_df[dna_df["Coach"].isin(replacement.index)].copy()
-rep_df["fit"] = replacement["xG_pct"].values
-
-fig.add_scatter(
+fig.add_trace(go.Scatter(
     x=rep_df["xGF_60"],
     y=rep_df["xGA_60"],
     mode="markers",
-    marker=dict(size=14),
+    marker=dict(size=12, color="blue"),
     name="Replacement Candidates",
-    customdata=rep_df[["Coach", "fit"]],
-    hovertemplate="<b>%{customdata[0]}</b><br>Fit Score: %{customdata[1]:.2f}<extra></extra>"
-)
+    hovertemplate="<b>%{text}</b><extra></extra>",
+    text=rep_df["Coach"]
+))
 
 # -------------------------
-# LEGEND CLEANUP
+# SELECTED / FOCUS COACH (RED + BIG)
+# -------------------------
+focus_point = dna_df[dna_df["Coach"] == active_coach]
+
+if not focus_point.empty:
+    fig.add_trace(go.Scatter(
+        x=focus_point["xGF_60"],
+        y=focus_point["xGA_60"],
+        mode="markers+text",
+        marker=dict(size=20, color="red"),
+        text=[active_coach],
+        textposition="top center",
+        name="Focused Coach"
+    ))
+
+# -------------------------
+# INTERACTIVE LAYOUT
 # -------------------------
 fig.update_layout(
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="left",
-        x=0
-    ),
+    hovermode="closest",
+    legend=dict(orientation="h", y=1.02, x=0),
     margin=dict(t=40)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================================================
-# 7. SIMILAR COACHES TABLE
+# CLICK SIMULATION CONTROLS (SCOUTING MODE)
 # =========================================================
-st.subheader("Most Similar Coaches")
+st.caption("Click simulation: select a coach to focus")
 
-if selected_coach in distance_df.index:
-    sim = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
+col1, col2 = st.columns(2)
 
-    st.dataframe(
-        pd.DataFrame({"Coach": sim.index}),
-        hide_index=True
-    )
+with col1:
+    if st.button("Focus Selected Coach"):
+        st.session_state.focus_coach = selected_coach
+
+with col2:
+    if st.button("Focus Similar Top Coach"):
+        if len(similar_list) > 0:
+            st.session_state.focus_coach = list(similar_list)[0]
 
 # =========================================================
-# 8. REPLACEMENT TABLE
+# QUICK CONTEXT PANEL
 # =========================================================
-st.subheader("Replacement Candidates")
+st.subheader("Focused Coach Context")
 
-rep_table = coach_features.sort_values("xG_pct", ascending=False).head(5)
-
-st.dataframe(
-    pd.DataFrame({"Coach": rep_table.index}),
-    hide_index=True
-)
+st.write(f"**Active Focus:** {active_coach}")
+st.write(f"Similar Pool: {len(similar_list)} coaches")
+st.write(f"Replacement Pool: {len(replacement_list)} coaches")
