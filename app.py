@@ -239,3 +239,9 @@ if selected_coach in distance_df.index:
     })
 
     st.dataframe(replacement_df)
+
+top_replacement = replacement_df.iloc[0]["Replacement Coach"]
+
+st.success(
+    f"{top_replacement} profiles as the strongest stylistic replacement for {selected_coach}."
+)
