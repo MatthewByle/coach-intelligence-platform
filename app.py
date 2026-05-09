@@ -20,7 +20,7 @@ selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 st.write("Selected Coach:", selected_coach)
 
 # --- COACH CONTEXT ---
-coach_row = coaches[coaches["Coach_Name"] == selected_coach].iloc[0]
+coach_row = coaches[coaches["Coach"] == selected_coach].iloc[0]
 
 team = coach_row["Team"]
 hire_date = coach_row["Hire_Date"]
