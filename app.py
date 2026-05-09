@@ -48,11 +48,12 @@ for col in ["xGF_60", "xGA_60", "xG_pct", "PDO"]:
     if col in stats.columns:
         stats[col] = pd.to_numeric(stats[col], errors="coerce")
 
+stats["Date"] = pd.to_datetime(stats.get("Date"), errors="coerce")
+
 # =========================================================
 # SIDEBAR
 # =========================================================
 coach_list = sorted(coaches["Head Coach"].dropna().unique())
-
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 st.session_state.active_coach = selected_coach
 
@@ -65,7 +66,42 @@ coach_row = coaches[coaches["Head Coach"] == active_coach].iloc[0]
 team = coach_row["Team Name"]
 
 team_stats = stats[stats["Team"] == team]
-coach_games = stats[stats["Coach"] == active_coach]
+coach_games = stats[stats["Coach"] == active_coach].copy()
+
+# =========================================================
+# =========================================================
+# 🧠 OPPONENT STRENGTH MODEL (FULL VERSION)
+# =========================================================
+# =========================================================
+
+team_strength = stats.groupby("Team")[["xGF_60", "xGA_60"]].mean()
+
+league_xgf = team_strength["xGF_60"].mean()
+league_xga = team_strength["xGA_60"].mean()
+
+team_strength["Off_Strength"] = team_strength["xGF_60"] - league_xgf
+team_strength["Def_Strength"] = team_strength["xGA_60"] - league_xga
+
+def get_opponent_strength(row):
+    opp = row.get("Opponent", None)
+    if opp in team_strength.index:
+        return (
+            team_strength.loc[opp, "Def_Strength"]
+            - team_strength.loc[opp, "Off_Strength"]
+        )
+    return 0
+
+stats["Opp_Strength"] = stats.apply(get_opponent_strength, axis=1)
+
+# =========================================================
+# ADJUSTED COACH METRICS
+# =========================================================
+
+cg = coach_games.copy()
+
+cg["Adj_xGF"] = cg["xGF_60"] - cg["Opp_Strength"] * 0.4
+cg["Adj_xGA"] = cg["xGA_60"] + cg["Opp_Strength"] * 0.4
+cg["Adj_xG_pct"] = cg["xG_pct"]
 
 # =========================================================
 # DNA MODEL
@@ -85,7 +121,7 @@ coach_features["Cluster"] = KMeans(
 dna_df = coach_features.reset_index()
 
 # =========================================================
-# ROLE MAPPING (FIXED CORE)
+# ROLE SYSTEM
 # =========================================================
 def get_role(cluster):
     return {
@@ -97,12 +133,15 @@ def get_role(cluster):
 
 dna_df["Role"] = dna_df["Cluster"].apply(get_role)
 
-# IMPORTANT: inject into stats
 coach_role_map = dna_df[["Coach", "Role"]].copy()
 stats = stats.merge(coach_role_map, on="Coach", how="left")
 
+coach_role = coach_role_map.loc[
+    coach_role_map["Coach"] == active_coach, "Role"
+].values[0]
+
 # =========================================================
-# ROLE-BASED GRADING ENGINE (FIXED)
+# ROLE-BASED GRADING ENGINE
 # =========================================================
 def role_grade(df, coach_name, metric, higher_is_better=True):
 
@@ -134,9 +173,6 @@ def role_grade(df, coach_name, metric, higher_is_better=True):
     else:
         return "F"
 
-# =========================================================
-# GRADES
-# =========================================================
 off_grade = role_grade(stats, active_coach, "xGF_60", True)
 def_grade = role_grade(stats, active_coach, "xGA_60", False)
 sys_grade = role_grade(stats, active_coach, "xG_pct", True)
@@ -155,10 +191,6 @@ elif overall_score >= 1.5:
 else:
     overall_grade = "F"
 
-coach_role = coach_role_map.loc[
-    coach_role_map["Coach"] == active_coach, "Role"
-].values[0]
-
 # =========================================================
 # HEADER
 # =========================================================
@@ -169,7 +201,7 @@ st.write(f"Role: **{coach_role}**")
 # =========================================================
 # SCORECARD
 # =========================================================
-st.subheader("Coach Scorecard (Role-Based)")
+st.subheader("Coach Scorecard (Role + Opponent Adjusted)")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Offense", off_grade)
@@ -249,14 +281,30 @@ st.subheader("Replacement Candidates")
 st.dataframe(dna_df[dna_df["Role"] == coach_role][["Coach"]])
 
 # =========================================================
-# SUMMARY
+# 🧠 AI NARRATIVE (FULL SYSTEM)
 # =========================================================
-st.subheader("Coaching Summary")
+st.subheader("AI Coaching Narrative")
 
-st.write(f"""
-- Role: **{coach_role}**
-- Offense Grade: **{off_grade}**
-- Defense Grade: **{def_grade}**
-- System Grade: **{sys_grade}**
-- Overall Grade: **{overall_grade}**
+narrative = []
+
+narrative.append(f"""
+This coach operates as a **{coach_role}**, meaning their identity is structurally consistent within a defined tactical archetype.
 """)
+
+if cg["Adj_xGF"].mean() > stats["xGF_60"].mean():
+    narrative.append("They generate above-average offensive output even after opponent adjustment.")
+else:
+    narrative.append("Offensive output remains system-dependent rather than dominance-driven.")
+
+if cg["Adj_xGA"].mean() < stats["xGA_60"].mean():
+    narrative.append("Defensive structure holds under opponent-adjusted conditions.")
+else:
+    narrative.append("Defensive outcomes are more opponent-sensitive than structural.")
+
+if cg["Adj_xG_pct"].mean() > stats["xG_pct"].mean():
+    narrative.append("They maintain above-average control of expected goal environment.")
+else:
+    narrative.append("Expected goal control fluctuates depending on matchup strength.")
+
+for line in narrative:
+    st.write("•", line)
