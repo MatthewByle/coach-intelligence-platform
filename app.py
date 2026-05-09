@@ -68,21 +68,44 @@ if "Date" in stats.columns:
     )
 
 # =========================================================
-# SIDEBAR
+# SIDEBAR NAVIGATION
 # =========================================================
 st.sidebar.header("Navigation")
 
-coach_list = sorted(
-    coaches["Head Coach"]
+# -------------------------
+# TEAM DROPDOWN
+# -------------------------
+team_list = sorted(
+    coaches["Team Name"]
     .dropna()
     .unique()
 )
 
+selected_team = st.sidebar.selectbox(
+    "Select Team",
+    team_list
+)
+
+# -------------------------
+# FILTER COACHES BY TEAM
+# -------------------------
+filtered_coaches = coaches[
+    coaches["Team Name"] == selected_team
+]
+
+coach_list = sorted(
+    filtered_coaches["Head Coach"]
+    .dropna()
+    .unique()
+)
+
+# -------------------------
+# COACH DROPDOWN
+# -------------------------
 selected_coach = st.sidebar.selectbox(
     "Select Coach",
     coach_list
 )
-
 # =========================================================
 # COACH LOOKUP
 # =========================================================
