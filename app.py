@@ -26,29 +26,27 @@ stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
 # =========================
-# CLEAN DATA (CRITICAL)
+# CLEAN DATA (CRITICAL FIX)
 # =========================
-def clean_strings(df):
+def clean(df):
     df = df.copy()
     for col in df.columns:
         if df[col].dtype == "object":
             df[col] = df[col].astype(str).str.replace("\u00a0", " ").str.strip()
     return df
 
-coaches = clean_strings(coaches)
-stats = clean_strings(stats)
+stats = clean(stats)
+coaches = clean(coaches)
 
 stats.columns = stats.columns.str.strip()
-
-# Standardize naming mismatch
 stats = stats.rename(columns={"Coach": "Head Coach"})
 
-# Convert types safely
+# Convert types
 stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
 stats["xG_pct"] = pd.to_numeric(stats["xG_pct"], errors="coerce")
 
 # =========================
-# SIDEBAR INPUT
+# SIDEBAR COACH SELECT
 # =========================
 coach_list = sorted(coaches["Head Coach"].dropna().unique())
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
@@ -59,52 +57,29 @@ selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 filtered = coaches[coaches["Head Coach"] == selected_coach]
 
 if filtered.empty:
-    st.error("Coach not found in dataset.")
+    st.error("Coach not found.")
     st.stop()
 
 coach_row = filtered.iloc[0]
 
 team = coach_row["Team Name"]
 hire_date = pd.to_datetime(coach_row["Hire Date"], errors="coerce")
-fire_date = pd.to_datetime(coach_row["Fire Date"], errors="coerce")
 
 # =========================
-# COACH CONTEXT UI
+# CONTEXT
 # =========================
 st.subheader("Coach Context")
-st.write(f"**Team:** {team}")
-st.write(f"**Hire Date:** {hire_date}")
-st.write(f"**Fire Date:** {fire_date}")
+st.write(f"Team: {team}")
+st.write(f"Hire Date: {hire_date}")
 
 # =========================
-# TEAM FILTER
+# TEAM DATA
 # =========================
 team_data = stats[stats["Team"] == team].copy()
 
 before = team_data[team_data["Date"] < hire_date].tail(15)
 after = team_data[team_data["Date"] >= hire_date].head(15)
 
-team_profile = team_data[[
-    "xGF_60",
-    "xGA_60",
-    "xG_pct"
-]].mean()
-
-league_avg = stats[[
-    "xGF_60",
-    "xGA_60",
-    "xG_pct"
-]].mean()
-
-team_needs = pd.Series({
-    "offense_need": league_avg["xGF_60"] - team_profile["xGF_60"],
-    "defense_need": team_profile["xGA_60"] - league_avg["xGA_60"],
-    "structure_need": league_avg["xG_pct"] - team_profile["xG_pct"]
-})
-
-# =========================
-# BEFORE / AFTER ANALYSIS
-# =========================
 def safe_mean(df, col):
     return df[col].mean() if not df.empty else None
 
@@ -117,24 +92,19 @@ delta = (
     else None
 )
 
-st.subheader("System Impact (Before vs After)")
+# =========================
+# BEFORE / AFTER UI
+# =========================
+st.subheader("System Impact")
 
 col1, col2, col3 = st.columns(3)
 
-col1.metric("xG% Before", f"{before_xg:.3f}" if before_xg is not None else "N/A")
-col2.metric("xG% After", f"{after_xg:.3f}" if after_xg is not None else "N/A")
+col1.metric("xG% Before", f"{before_xg:.3f}" if before_xg else "N/A")
+col2.metric("xG% After", f"{after_xg:.3f}" if after_xg else "N/A")
 col3.metric("Impact Delta", f"{delta:.3f}" if delta is not None else "N/A")
 
 # =========================
-# TREND CHART
-# =========================
-st.subheader("Team xG% Trend")
-
-if not team_data.empty:
-    st.line_chart(team_data[["Date", "xG_pct"]].set_index("Date"))
-
-# =========================
-# COACH PERFORMANCE SCORE
+# SCORECARD
 # =========================
 team_stats = stats[stats["Team"] == team]
 
@@ -142,20 +112,11 @@ offense_score = team_stats["xGF_60"].rank(pct=True).mean() * 100
 defense_score = (1 - team_stats["xGA_60"].rank(pct=True)).mean() * 100
 coach_score = (0.6 * offense_score) + (0.4 * defense_score)
 
-grade = (
-    "A" if coach_score >= 80 else
-    "B" if coach_score >= 70 else
-    "C" if coach_score >= 60 else
-    "D" if coach_score >= 50 else
-    "F"
-)
-
 st.subheader("Coach Scorecard")
 
 st.metric("Offense", round(offense_score, 1))
 st.metric("Defense", round(defense_score, 1))
-st.metric("Overall Score", round(coach_score, 1))
-st.success(f"Grade: {grade}")
+st.metric("Overall", round(coach_score, 1))
 
 # =========================
 # FEATURE MATRIX (DNA)
@@ -174,6 +135,72 @@ kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
 coach_features["Cluster"] = kmeans.fit_predict(X_scaled)
 
 dna_df = coach_features.reset_index()
+
+# =========================
+# SIMILARITY ENGINE (COACH-TO-COACH)
+# =========================
+distance_matrix = euclidean_distances(X_scaled)
+
+distance_df = pd.DataFrame(
+    distance_matrix,
+    index=coach_features.index,
+    columns=coach_features.index
+)
+
+st.subheader("Most Similar Coaches")
+
+if selected_coach in distance_df.index:
+    sims = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
+
+    st.dataframe(pd.DataFrame({
+        "Coach": sims.index,
+        "Similarity": sims.values.round(2)
+    }))
+
+# =========================
+# REPLACEMENT ENGINE (TEAM NEEDS MODEL) ⭐ NEW
+# =========================
+st.subheader("Replacement Candidates (Team Needs Model)")
+
+league_avg = stats[[
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]].mean()
+
+team_profile = team_data[[
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]].mean()
+
+team_needs = pd.Series({
+    "offense_need": league_avg["xGF_60"] - team_profile["xGF_60"],
+    "defense_need": team_profile["xGA_60"] - league_avg["xGA_60"],
+    "structure_need": league_avg["xG_pct"] - team_profile["xG_pct"]
+})
+
+replacement_scores = coach_features.copy()
+
+replacement_scores["offense_strength"] = replacement_scores["xGF_60"] - league_avg["xGF_60"]
+replacement_scores["defense_strength"] = league_avg["xGA_60"] - replacement_scores["xGA_60"]
+replacement_scores["structure_strength"] = replacement_scores["xG_pct"] - league_avg["xG_pct"]
+
+replacement_scores["Fit Score"] = (
+    team_needs["offense_need"] * replacement_scores["offense_strength"] +
+    team_needs["defense_need"] * replacement_scores["defense_strength"] +
+    team_needs["structure_need"] * replacement_scores["structure_strength"]
+)
+
+top_replacements = replacement_scores.sort_values("Fit Score", ascending=False).head(5)
+
+st.dataframe(top_replacements.reset_index()[[
+    "Head Coach",
+    "Fit Score",
+    "xGF_60",
+    "xGA_60",
+    "xG_pct"
+]])
 
 # =========================
 # DNA MAP
@@ -204,91 +231,41 @@ if not selected_row.empty:
 st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# SIMILARITY ENGINE
-# =========================
-st.subheader("Replacement Candidates (Team Fit Model)")
-
-replacements = replacement_scores.sort_values("Fit Score", ascending=False).head(5)
-
-replacement_df = replacements.reset_index()[[
-    "Head Coach",
-    "Fit Score",
-    "xGF_60",
-    "xGA_60",
-    "xG_pct"
-]]
-
-st.dataframe(replacement_df)
-
-# =========================
-# REPLACEMENT ENGINE
-# =========================
-replacement_scores = coach_features.copy()
-
-# Normalize coach strengths relative to league
-replacement_scores["offense_strength"] = replacement_scores["xGF_60"] - league_avg["xGF_60"]
-replacement_scores["defense_strength"] = league_avg["xGA_60"] - replacement_scores["xGA_60"]
-replacement_scores["structure_strength"] = replacement_scores["xG_pct"] - league_avg["xG_pct"]
-
-# Fit calculation (TEAM NEED MATCHING)
-replacement_scores["Fit Score"] = (
-    team_needs["offense_need"] * replacement_scores["offense_strength"] +
-    team_needs["defense_need"] * replacement_scores["defense_strength"] +
-    team_needs["structure_need"] * replacement_scores["structure_strength"]
-)
-
-# =========================
 # NARRATIVE LAYER
 # =========================
 st.subheader("Coach Narrative")
 
-coach_profile = coach_features.loc[selected_coach]
+profile = coach_features.loc[selected_coach]
 
 narrative = []
 
-if coach_profile["xGF_60"] > coach_features["xGF_60"].mean():
-    narrative.append("Offensive-heavy system with strong chance creation.")
+if profile["xGF_60"] > coach_features["xGF_60"].mean():
+    narrative.append("Offensive-oriented system with strong chance creation.")
 else:
-    narrative.append("More structured and controlled offensive system.")
+    narrative.append("Controlled offensive structure.")
 
-if coach_profile["xGA_60"] < coach_features["xGA_60"].mean():
-    narrative.append("Strong defensive suppression profile.")
+if profile["xGA_60"] < coach_features["xGA_60"].mean():
+    narrative.append("Defensive stability above league average.")
 else:
-    narrative.append("Allows higher defensive volatility.")
+    narrative.append("Defensive volatility present.")
 
-if coach_profile["xG_pct"] > coach_features["xG_pct"].mean():
-    narrative.append("Above-average expected goal control.")
-else:
-    narrative.append("Below-average expected goal control.")
-
-for line in narrative:
-    st.write("•", line)
+for n in narrative:
+    st.write("•", n)
 
 # =========================
-# COACH PROFILE CARD
+# PROFILE CARD
 # =========================
-def get_archetype(cluster):
-    return {
-        0: "Balanced System",
-        1: "Offensive Pressure",
-        2: "Defensive Structure",
-        3: "High Variance"
-    }.get(cluster, "Unknown")
+st.subheader("Coach Profile Card")
 
-coach_profile_row = dna_df[dna_df["Head Coach"] == selected_coach].iloc[0]
-archetype = get_archetype(coach_profile_row["Cluster"])
-
-st.subheader("Coach Profile")
+row = dna_df[dna_df["Head Coach"] == selected_coach].iloc[0]
 
 st.markdown(f"""
 ### {selected_coach}
 
-**Archetype:** {archetype}
+**Cluster:** {row["Cluster"]}
 
-- xGF/60: {coach_profile_row["xGF_60"]:.2f}
-- xGA/60: {coach_profile_row["xGA_60"]:.2f}
-- xG%: {coach_profile_row["xG_pct"]:.2f}
-- PDO: {coach_profile_row["PDO"]:.3f}
-
-System Identity: {archetype} profile based on clustering model.
+- xGF/60: {row["xGF_60"]:.2f}
+- xGA/60: {row["xGA_60"]:.2f}
+- xG%: {row["xG_pct"]:.2f}
+- PDO: {row["PDO"]:.3f}
 """)
