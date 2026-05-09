@@ -81,3 +81,33 @@ st.subheader("Team xG% Trend (Season)")
 st.line_chart(
     team_data[["Date", "xG_pct"]].set_index("Date")
 )
+
+offense_score = stats["xGF/60"].rank(pct=True).mean() * 100
+
+defense_score = (1 - stats["xGA/60"].rank(pct=True)).mean() * 100
+
+team_stats = stats[stats["Team"] == team]
+
+offense_score = team_stats["xGF/60"].rank(pct=True).mean() * 100
+defense_score = (1 - team_stats["xGA/60"].rank(pct=True)).mean() * 100
+
+coach_score = (0.6 * offense_score) + (0.4 * defense_score)
+
+if coach_score >= 80:
+    grade = "A"
+elif coach_score >= 70:
+    grade = "B"
+elif coach_score >= 60:
+    grade = "C"
+elif coach_score >= 50:
+    grade = "D"
+else:
+    grade = "F"
+
+st.subheader("Coach Performance Scorecard")
+
+st.metric("Offense Score", round(offense_score, 1))
+st.metric("Defense Score", round(defense_score, 1))
+st.metric("Coach Score", round(coach_score, 1))
+
+st.success(f"Coach Grade: {grade}")
