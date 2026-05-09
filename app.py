@@ -50,8 +50,8 @@ hire_date = pd.to_datetime(hire_date)
 before = team_data[team_data["Date"] < hire_date].tail(15)
 after = team_data[team_data["Date"] >= hire_date].head(15)
 
-before_xg = before["xG%"].mean()
-after_xg = after["xG%"].mean()
+before_xg = before["xG_pct"].mean()
+after_xg = after["xG_pct"].mean()
 
 delta = after_xg - before_xg
 
