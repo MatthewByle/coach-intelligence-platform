@@ -16,9 +16,13 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
-stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
+coach_row = coaches[coaches["Head Coach"] == selected_coach].iloc[0]
 
-hire_date = pd.to_datetime(hire_date, errors="coerce")
+team = coach_row["Team Name"]
+hire_date = coach_row["Hire Date"]
+fire_date = coach_row["Fire Date"]
+
+stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
 
 stats.columns = stats.columns.str.strip()
 
@@ -39,12 +43,6 @@ selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
 st.write("Selected Coach:", selected_coach)
 
-coach_row = coaches[coaches["Head Coach"] == selected_coach].iloc[0]
-
-team = coach_row["Team Name"]
-hire_date = coach_row["Hire Date"]
-fire_date = coach_row["Fire Date"]
-
 st.subheader("Coach Context")
 st.write("Team:", team)
 st.write("Hire Date:", hire_date)
@@ -57,14 +55,14 @@ stats = stats.dropna(subset=["xG_pct"])
 
 team_data = stats[stats["Team"] == team].copy()
 
+hire_date = pd.to_datetime(hire_date, errors="coerce")
+
 before = team_data[team_data["Date"] < hire_date].tail(15)
 after = team_data[team_data["Date"] >= hire_date].head(15)
 
 if before.empty or after.empty:
     st.warning("Not enough data for before/after analysis")
-    before_xg = None
-    after_xg = None
-    delta = None
+    before_xg = after_xg = delta = None
 else:
     before_xg = before["xG_pct"].mean()
     after_xg = after["xG_pct"].mean()
@@ -95,7 +93,7 @@ col1, col2, col3 = st.columns(3)
 
 col1.metric("xG% Before", round(before_xg, 3) if before_xg else "N/A")
 col2.metric("xG% After", round(after_xg, 3) if after_xg else "N/A")
-col3.metric("Impact Delta", round(impact_delta, 3) if impact_delta else "N/A")
+col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A"
 
 stats.columns = stats.columns.str.strip()
 
@@ -209,14 +207,6 @@ if selected_coach in distance_df.index:
 
 else:
     st.error("Selected coach not found in similarity engine")
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(coach_features)
-
-kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
-coach_features["Cluster"] = kmeans.fit_predict(X_scaled)
 
 dna_df = coach_features.reset_index()
 
