@@ -4,6 +4,7 @@ import plotly.express as px
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import euclidean_distances
 
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
@@ -155,6 +156,34 @@ st.write(cluster_coaches)
 st.write("Selected coach:", selected_coach)
 st.write("Coach feature index sample:", coach_features.index.tolist()[:10])
 
+distance_matrix = euclidean_distances(X_scaled)
+
+distance_df = pd.DataFrame(
+    distance_matrix,
+    index=coach_features.index,
+    columns=coach_features.index
+)
+
+st.subheader("Most Similar Coaches")
+
+if selected_coach in distance_df.index:
+
+    similarities = (
+        distance_df[selected_coach]
+        .sort_values()
+        .drop(selected_coach)
+        .head(5)
+    )
+
+    similar_df = pd.DataFrame({
+        "Coach": similarities.index,
+        "Similarity Score": similarities.values.round(2)
+    })
+
+    st.dataframe(similar_df)
+
+else:
+    st.error("Selected coach not found in similarity engine")
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
