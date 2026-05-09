@@ -311,3 +311,38 @@ elif pdo < 0.98:
 # --- OUTPUT NARRATIVE ---
 for sentence in narrative:
     st.write("•", sentence)
+
+def get_archetype(cluster_id):
+    mapping = {
+        0: "Balanced System Coach",
+        1: "Offensive Pressure Coach",
+        2: "Defensive Structure Coach",
+        3: "High-Variance / Transition Coach"
+    }
+    return mapping.get(cluster_id, "Unknown Archetype")
+
+dna_df["Archetype"] = dna_df["Cluster"].apply(get_archetype)
+
+st.subheader("Coach Profile Card")
+
+coach_row = dna_df[dna_df["Head Coach"] == selected_coach].iloc[0]
+
+st.markdown(f"""
+### {selected_coach}
+
+**Archetype:** {coach_row["Archetype"]}  
+**Cluster ID:** {coach_row["Cluster"]}
+
+---
+
+**Style Profile**
+- xGF/60: {round(coach_row["xGF_60"], 2)}
+- xGA/60: {round(coach_row["xGA_60"], 2)}
+- xG%: {round(coach_row["xG_pct"], 2)}
+- PDO: {round(coach_row["PDO"], 3)}
+
+---
+
+**System Identity**
+This coach profiles as a **{coach_row["Archetype"]}**, combining their statistical profile with league clustering patterns.
+""")
