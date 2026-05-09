@@ -16,6 +16,13 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
+coaches["Head Coach"] = (
+    coaches["Head Coach"]
+    .astype(str)
+    .str.replace("\u00a0", " ", regex=False)
+    .str.strip()
+)
+
 def clean_str(col):
     return col.astype(str).str.strip().str.replace("\u00a0", " ")
 
@@ -24,10 +31,12 @@ coaches["Head Coach"] = clean_str(coaches["Head Coach"])
 coaches.columns = coaches.columns.str.strip()
 coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
 
-filtered = coaches[coaches["Head Coach"] == selected_coach]
+filtered = coaches.loc[
+    coaches["Head Coach"].str.strip() == selected_coach
+]
 
 if filtered.empty:
-    st.error("Coach not found after normalization. Check sheet formatting.")
+    st.error(f"Coach '{selected_coach}' not found in dataset.")
     st.stop()
 
 coach_row = filtered.iloc[0]
@@ -52,8 +61,8 @@ if st.checkbox("Show raw data (debug)"):
     st.write(coaches.columns)
     st.dataframe(coaches.head())
 
-coach_list = coaches["Head Coach"].dropna().astype(str).str.strip().unique()
-selected_coach = str(selected_coach).strip()
+coach_list = sorted(coaches["Head Coach"].dropna().unique())
+selected_coach = str(selected_coach).replace("\u00a0", " ").strip()
 selected_coach = st.sidebar.selectbox("Select Coach", coach_list)
 
 st.write("Selected Coach:", selected_coach)
