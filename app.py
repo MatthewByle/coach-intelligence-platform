@@ -82,7 +82,7 @@ team = coach_row["Team Name"]
 hire_date = pd.to_datetime(coach_row.get("Hire Date", None), errors="coerce")
 
 # =========================================================
-# TEAM SPLIT
+# TEAM DATA
 # =========================================================
 team_data = stats[stats["Team"] == team].sort_values("Date")
 
@@ -180,7 +180,7 @@ if not team_data.empty:
 st.divider()
 
 # =========================================================
-# 6. DNA MAP (FULL HIGHLIGHT SYSTEM)
+# 6. DNA MAP (UPDATED HIGHLIGHTS)
 # =========================================================
 st.subheader("Coach DNA Map")
 
@@ -190,12 +190,11 @@ fig = px.scatter(
     dna_df,
     x="xGF_60",
     y="xGA_60",
-    color="Cluster",
     hover_name="Coach"
 )
 
 # -------------------------
-# SELECTED COACH (YOU)
+# SELECTED COACH (LABEL = NAME)
 # -------------------------
 selected_point = dna_df[dna_df["Coach"] == selected_coach]
 
@@ -205,13 +204,13 @@ if not selected_point.empty:
         y=selected_point["xGA_60"],
         mode="markers+text",
         marker=dict(size=18),
-        text=["YOU"],
+        text=[selected_coach],
         textposition="top center",
         name="Selected Coach"
     )
 
 # -------------------------
-# SIMILAR COACHES (GREEN)
+# SIMILAR COACHES (HOVER NAME + SCORE)
 # -------------------------
 if selected_coach in distance_df.index:
     similar = (
@@ -219,32 +218,51 @@ if selected_coach in distance_df.index:
         .sort_values()
         .drop(selected_coach)
         .head(5)
-        .index
     )
 
-    sim_df = dna_df[dna_df["Coach"].isin(similar)]
+    sim_df = dna_df[dna_df["Coach"].isin(similar.index)].copy()
+    sim_df["score"] = similar.values
 
     fig.add_scatter(
         x=sim_df["xGF_60"],
         y=sim_df["xGA_60"],
         mode="markers",
         marker=dict(size=14),
-        name="Similar Coaches"
+        name="Similar Coaches",
+        customdata=sim_df[["Coach", "score"]],
+        hovertemplate="<b>%{customdata[0]}</b><br>Similarity: %{customdata[1]:.2f}<extra></extra>"
     )
 
 # -------------------------
-# REPLACEMENT COACHES (BLUE)
+# REPLACEMENT COACHES (HOVER NAME + FIT SCORE)
 # -------------------------
-replacement = coach_features.sort_values("xG_pct", ascending=False).head(5).index
+replacement = coach_features.sort_values("xG_pct", ascending=False).head(5)
 
-rep_df = dna_df[dna_df["Coach"].isin(replacement)]
+rep_df = dna_df[dna_df["Coach"].isin(replacement.index)].copy()
+rep_df["fit"] = replacement["xG_pct"].values
 
 fig.add_scatter(
     x=rep_df["xGF_60"],
     y=rep_df["xGA_60"],
     mode="markers",
     marker=dict(size=14),
-    name="Replacement Candidates"
+    name="Replacement Candidates",
+    customdata=rep_df[["Coach", "fit"]],
+    hovertemplate="<b>%{customdata[0]}</b><br>Fit Score: %{customdata[1]:.2f}<extra></extra>"
+)
+
+# -------------------------
+# LEGEND CLEANUP
+# -------------------------
+fig.update_layout(
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="left",
+        x=0
+    ),
+    margin=dict(t=40)
 )
 
 st.plotly_chart(fig, use_container_width=True)
@@ -263,7 +281,7 @@ if selected_coach in distance_df.index:
     )
 
 # =========================================================
-# 8. REPLACEMENTS TABLE
+# 8. REPLACEMENT TABLE
 # =========================================================
 st.subheader("Replacement Candidates")
 
