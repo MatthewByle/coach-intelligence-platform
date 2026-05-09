@@ -9,63 +9,59 @@ from sklearn.metrics.pairwise import euclidean_distances
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
-st.set_page_config(
-    page_title="NHL Coaching",
-    layout="wide"
-)
+st.set_page_config(page_title="NHL Coaching", layout="wide")
 
 st.title("NHL Coaching")
 
 # -----------------------------
-# GOOGLE SHEET LOADER
+# SHEET LOADER
 # -----------------------------
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
 @st.cache_data
 def load_data(sheet_name):
     url = (
-        f"https://docs.google.com/spreadsheets/d/"
-        f"{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq"
+        f"?tqx=out:csv&sheet={sheet_name}"
     )
-    df = pd.read_csv(url)
-    return df
+    return pd.read_csv(url)
 
+# -----------------------------
+# LOAD DATA
+# -----------------------------
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
 # -----------------------------
-# REMOVE BAD BLANK COLUMN (IMPORTANT FIX)
+# CLEAN COLUMN ISSUES (CRITICAL FIX)
 # -----------------------------
-if stats.columns[0] == "" or "unnamed" in stats.columns[0].lower():
-    stats = stats.iloc[:, 1:]
+stats.columns = stats.columns.astype(str).str.strip()
+coaches.columns = coaches.columns.astype(str).str.strip()
+
+# drop junk columns like "", Unnamed: 0
+stats = stats.loc[:, ~stats.columns.str.contains("^Unnamed")]
+stats = stats.loc[:, stats.columns != ""]
+
+# FIX MISALIGNED DATE COLUMN (KEY FIX)
+if "Date" not in stats.columns:
+    stats = stats.rename(columns={stats.columns[0]: "Date"})
 
 # -----------------------------
-# CLEAN COLUMN NAMES
-# -----------------------------
-stats.columns = stats.columns.str.strip()
-coaches.columns = coaches.columns.str.strip()
-
-# -----------------------------
-# CLEAN STRINGS
-# -----------------------------
-coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
-coaches["Team Name"] = coaches["Team Name"].astype(str).str.strip()
-
-stats["Coach"] = stats["Coach"].astype(str).str.strip()
-stats["Team"] = stats["Team"].astype(str).str.strip()
-
-# -----------------------------
-# CONVERT DATE SAFELY
+# TYPE CLEANING
 # -----------------------------
 stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
 
-# numeric safety
 for col in ["xGF_60", "xGA_60", "xG_pct", "PDO"]:
     if col in stats.columns:
         stats[col] = pd.to_numeric(stats[col], errors="coerce")
 
+coaches["Head Coach"] = coaches["Head Coach"].astype(str).str.strip()
+coaches["Team Name"] = coaches["Team Name"].astype(str).str.strip()
+stats["Coach"] = stats["Coach"].astype(str).str.strip()
+stats["Team"] = stats["Team"].astype(str).str.strip()
+
 # -----------------------------
-# SIDEBAR NAVIGATION
+# SIDEBAR FILTERS
 # -----------------------------
 st.sidebar.header("Filters")
 
@@ -83,26 +79,21 @@ else:
         coaches[coaches["Team Name"] == selected_team]["Head Coach"].dropna().unique()
     )
 
-selected_coach = st.sidebar.selectbox(
-    "Select Coach",
-    coach_options
-)
+selected_coach = st.sidebar.selectbox("Select Coach", coach_options)
 
 # -----------------------------
 # COACH LOOKUP
 # -----------------------------
-coach_filtered = coaches[
-    coaches["Head Coach"] == selected_coach
-]
+coach_row = coaches[coaches["Head Coach"] == selected_coach]
 
-if coach_filtered.empty:
+if coach_row.empty:
     st.error("Coach not found")
     st.stop()
 
-coach_row = coach_filtered.iloc[0]
+coach_row = coach_row.iloc[0]
 
 team = coach_row["Team Name"]
-hire_date = pd.to_datetime(coach_row["Hire Date"], errors="coerce")
+hire_date = pd.to_datetime(coach_row.get("Hire Date", None), errors="coerce")
 
 # -----------------------------
 # TEAM DATA
@@ -135,15 +126,12 @@ with left:
     st.markdown(f"## {selected_coach}")
     st.write(f"**Team:** {team}")
 
-    st.divider()
-
     coach_games = stats[stats["Coach"] == selected_coach]
 
     offense = coach_games["xGF_60"].mean()
     defense = coach_games["xGA_60"].mean()
 
     st.subheader("Coach Scorecard")
-
     st.metric("Offense", round(offense, 2) if pd.notna(offense) else "N/A")
     st.metric("Defense", round(defense, 2) if pd.notna(defense) else "N/A")
 
@@ -164,18 +152,13 @@ with right:
     st.subheader("Team xG% Trend")
 
     if not team_data.empty:
-        st.line_chart(
-            team_data[["Date", "xG_pct"]].dropna().set_index("Date")
-        )
+        st.line_chart(team_data.set_index("Date")["xG_pct"])
 
 # -----------------------------
 # DNA MODEL
 # -----------------------------
 coach_features = stats.groupby("Coach")[[
-    "xGF_60",
-    "xGA_60",
-    "xG_pct",
-    "PDO"
+    "xGF_60", "xGA_60", "xG_pct", "PDO"
 ]].mean().dropna()
 
 scaler = StandardScaler()
@@ -196,23 +179,23 @@ distance_df = pd.DataFrame(
 st.subheader("Most Similar Coaches")
 
 if selected_coach in distance_df.index:
-    similar = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
+    sim = distance_df[selected_coach].sort_values().drop(selected_coach).head(5)
 
     st.dataframe(
-        pd.DataFrame({"Coach": similar.index}),
+        pd.DataFrame({"Coach": sim.index}),
         hide_index=True
     )
 
 # -----------------------------
-# REPLACEMENT CANDIDATES
+# REPLACEMENTS
 # -----------------------------
 st.subheader("Replacement Candidates")
 
 if selected_coach in coach_features.index:
-    replacements = coach_features.sort_values("xG_pct", ascending=False).head(5)
+    rep = coach_features.sort_values("xG_pct", ascending=False).head(5)
 
     st.dataframe(
-        pd.DataFrame({"Coach": replacements.index}),
+        pd.DataFrame({"Coach": rep.index}),
         hide_index=True
     )
 
