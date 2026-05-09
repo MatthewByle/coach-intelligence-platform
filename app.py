@@ -16,6 +16,10 @@ def load_data(sheet_name):
 stats = load_data("RawStats")
 coaches = load_data("Coach_Registry")
 
+stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
+
+hire_date = pd.to_datetime(hire_date, errors="coerce")
+
 stats.columns = stats.columns.str.strip()
 
 stats = stats.rename(columns={"Coach": "Head Coach"})
@@ -52,7 +56,19 @@ stats["xG_pct"] = pd.to_numeric(stats["xG_pct"], errors="coerce")
 stats = stats.dropna(subset=["xG_pct"])
 
 team_data = stats[stats["Team"] == team].copy()
-team_data = team_data.sort_values("Date")
+
+before = team_data[team_data["Date"] < hire_date].tail(15)
+after = team_data[team_data["Date"] >= hire_date].head(15)
+
+if before.empty or after.empty:
+    st.warning("Not enough data for before/after analysis")
+    before_xg = None
+    after_xg = None
+    delta = None
+else:
+    before_xg = before["xG_pct"].mean()
+    after_xg = after["xG_pct"].mean()
+    delta = after_xg - before_xg
 
 hire_date = pd.to_datetime(hire_date)
 
