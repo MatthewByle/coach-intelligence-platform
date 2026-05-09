@@ -35,10 +35,35 @@ coaches = load_data("Coach_Registry")
 # -----------------------------
 # CLEAN DATA
 # -----------------------------
-stats.columns = stats.columns.str.strip()
-coaches.columns = coaches.columns.str.strip()
+# -----------------------------
+# CLEAN COLUMN NAMES
+# -----------------------------
+stats.columns = (
+    stats.columns
+    .str.replace("\u00a0", " ", regex=False)
+    .str.strip()
+)
 
-stats["Date"] = pd.to_datetime(stats["Date"], errors="coerce")
+coaches.columns = (
+    coaches.columns
+    .str.replace("\u00a0", " ", regex=False)
+    .str.strip()
+)
+
+# Debug helper
+# st.write(stats.columns)
+
+# -----------------------------
+# DATE CLEANING
+# -----------------------------
+if "Date" not in stats.columns:
+    st.error(f"Date column not found. Available columns: {list(stats.columns)}")
+    st.stop()
+
+stats["Date"] = pd.to_datetime(
+    stats["Date"],
+    errors="coerce"
+)
 
 stats["xGF_60"] = pd.to_numeric(stats["xGF_60"], errors="coerce")
 stats["xGA_60"] = pd.to_numeric(stats["xGA_60"], errors="coerce")
