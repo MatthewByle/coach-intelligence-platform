@@ -42,7 +42,7 @@ st.write("Fire Date:", fire_date)
 
 stats["Date"] = pd.to_datetime(stats["Date"])
 
-team_data = stats[stats["Team Name"] == team].copy()
+team_data = stats[stats["Team"] == team].copy()
 team_data = team_data.sort_values("Date")
 
 hire_date = pd.to_datetime(hire_date)
