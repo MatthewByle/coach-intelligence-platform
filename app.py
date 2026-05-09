@@ -12,13 +12,13 @@ st.set_page_config(page_title="NHL Coaching", layout="wide")
 st.title("NHL Coaching")
 
 # =========================================================
-# STATE
+# SESSION STATE
 # =========================================================
 if "active_coach" not in st.session_state:
     st.session_state.active_coach = None
 
 # =========================================================
-# LOAD DATA
+# DATA
 # =========================================================
 SHEET_ID = "1JPWoFRyeEEjD-0FFkZP7-DF2aSbKl3oUi8e7S9yF_ns"
 
@@ -65,101 +65,15 @@ if st.sidebar.button("Reset Focus"):
 active_coach = st.session_state.active_coach
 
 # =========================================================
-# COACH LOOKUP
+# LOOKUP
 # =========================================================
 coach_row = coaches[coaches["Head Coach"] == active_coach].iloc[0]
 team = coach_row["Team Name"]
 
 team_stats = stats[stats["Team"] == team]
-coach_games = stats[stats["Coach"] == active_coach]
 
 # =========================================================
-# 🧠 OPPONENT ADJUSTED COACHING INDEX (OACI)
-# =========================================================
-
-# estimate opponent strength from league context
-team_strength = stats.groupby("Team")["xGA_60"].mean()
-league_mean = team_strength.mean()
-league_std = team_strength.std()
-
-def get_opponent_strength(row):
-    opp_team = row.get("Opponent", None)
-    if opp_team in team_strength:
-        return (team_strength[opp_team] - league_mean) / (league_std + 1e-6)
-    return 0
-
-if "Opponent" in stats.columns:
-    coach_games = coach_games.copy()
-    coach_games["Opp_Strength"] = coach_games.apply(get_opponent_strength, axis=1)
-else:
-    coach_games["Opp_Strength"] = 0
-
-# adjusted metrics
-coach_games["Adj_xGF"] = coach_games["xGF_60"] - coach_games["Opp_Strength"] * 0.5
-coach_games["Adj_xGA"] = coach_games["xGA_60"] + coach_games["Opp_Strength"] * 0.5
-
-oaci_offense = coach_games["Adj_xGF"].mean()
-oaci_defense = coach_games["Adj_xGA"].mean()
-
-# normalize into 0-100 scale
-oaci_offense_score = 50 + (oaci_offense - stats["xGF_60"].mean()) / (stats["xGF_60"].std() + 1e-6) * 15
-oaci_defense_score = 50 + (stats["xGA_60"].mean() - oaci_defense) / (stats["xGA_60"].std() + 1e-6) * 15
-
-oaci_offense_score = max(0, min(100, oaci_offense_score))
-oaci_defense_score = max(0, min(100, oaci_defense_score))
-
-# =========================================================
-# FINAL SCORE + GRADING
-# =========================================================
-offense_score = oaci_offense_score
-defense_score = oaci_defense_score
-
-coach_score = (0.6 * offense_score) + (0.4 * defense_score)
-
-if coach_score >= 80:
-    grade = "A"
-elif coach_score >= 70:
-    grade = "B"
-elif coach_score >= 60:
-    grade = "C"
-elif coach_score >= 50:
-    grade = "D"
-else:
-    grade = "F"
-
-# =========================================================
-# HEADER
-# =========================================================
-st.subheader(f"Coach: {active_coach}")
-st.write(f"Team: **{team}**")
-
-# =========================================================
-# SCORECARD (NOW REAL)
-# =========================================================
-st.subheader("Coach Scorecard")
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Offense (Adj)", round(offense_score, 1))
-c2.metric("Defense (Adj)", round(defense_score, 1))
-c3.metric("Coach Score", round(coach_score, 1))
-
-st.success(f"Grade: {grade}")
-
-# =========================================================
-# TEAM STATS
-# =========================================================
-st.subheader("Team Stats")
-
-profile = team_stats[["xGF_60", "xGA_60", "xG_pct", "PDO"]].mean(numeric_only=True)
-
-cols = st.columns(4)
-cols[0].metric("xGF/60", round(profile["xGF_60"], 2))
-cols[1].metric("xGA/60", round(profile["xGA_60"], 2))
-cols[2].metric("xG%", round(profile["xG_pct"], 2))
-cols[3].metric("PDO", round(profile["PDO"], 3))
-
-# =========================================================
-# DNA MODEL
+# MODEL (DNA + ROLE CLUSTERS)
 # =========================================================
 coach_features = stats.groupby("Coach")[[
     "xGF_60", "xGA_60", "xG_pct", "PDO"
@@ -173,13 +87,99 @@ coach_features["Cluster"] = KMeans(
     n_init=10
 ).fit_predict(X)
 
-distance_df = pd.DataFrame(
-    euclidean_distances(X),
-    index=coach_features.index,
-    columns=coach_features.index
-)
-
 dna_df = coach_features.reset_index()
+
+# =========================================================
+# ROLE DEFINITIONS (NEW CORE)
+# =========================================================
+def get_role(cluster):
+    return {
+        0: "Balanced System Coach",
+        1: "Offensive Pressure Coach",
+        2: "Defensive Structure Coach",
+        3: "High-Variance Transition Coach"
+    }.get(cluster, "Unknown")
+
+dna_df["Role"] = dna_df["Cluster"].apply(get_role)
+
+# =========================================================
+# ROLE-BASED GRADING ENGINE (NEW CORE)
+# =========================================================
+def role_grade(df, coach_name, metric, higher_is_better=True):
+    group = df.groupby("Role")[metric].apply(list)
+
+    coach_role = dna_df[dna_df["Coach"] == coach_name]["Role"].values[0]
+
+    role_values = group[coach_role]
+    coach_value = df[df["Coach"] == coach_name][metric].mean()
+
+    if higher_is_better:
+        pct = (pd.Series(role_values) <= coach_value).mean()
+    else:
+        pct = (pd.Series(role_values) >= coach_value).mean()
+
+    if pct >= 0.85:
+        return "A"
+    elif pct >= 0.70:
+        return "B"
+    elif pct >= 0.55:
+        return "C"
+    elif pct >= 0.40:
+        return "D"
+    else:
+        return "F"
+
+coach_role = dna_df[dna_df["Coach"] == active_coach]["Role"].values[0]
+
+off_grade = role_grade(stats, active_coach, "xGF_60", True)
+def_grade = role_grade(stats, active_coach, "xGA_60", False)
+sys_grade = role_grade(stats, active_coach, "xG_pct", True)
+
+# overall role-based grade
+grade_map = {"A":5,"B":4,"C":3,"D":2,"F":1}
+overall_score = (grade_map[off_grade] + grade_map[def_grade] + grade_map[sys_grade]) / 3
+
+if overall_score >= 4.5:
+    overall_grade = "A"
+elif overall_score >= 3.5:
+    overall_grade = "B"
+elif overall_score >= 2.5:
+    overall_grade = "C"
+elif overall_score >= 1.5:
+    overall_grade = "D"
+else:
+    overall_grade = "F"
+
+# =========================================================
+# HEADER
+# =========================================================
+st.subheader(f"Coach: {active_coach}")
+st.write(f"Team: **{team}**")
+st.write(f"Role: **{coach_role}**")
+
+# =========================================================
+# SCORECARD (ROLE BASED)
+# =========================================================
+st.subheader("Coach Scorecard (Role-Based)")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Offense Grade", off_grade)
+c2.metric("Defense Grade", def_grade)
+c3.metric("System Grade", sys_grade)
+c4.metric("Overall Grade", overall_grade)
+
+# =========================================================
+# TEAM STATS
+# =========================================================
+st.subheader("Team Stats")
+
+profile = team_stats[["xGF_60","xGA_60","xG_pct","PDO"]].mean(numeric_only=True)
+
+cols = st.columns(4)
+cols[0].metric("xGF/60", round(profile["xGF_60"],2))
+cols[1].metric("xGA/60", round(profile["xGA_60"],2))
+cols[2].metric("xG%", round(profile["xG_pct"],2))
+cols[3].metric("PDO", round(profile["PDO"],3))
 
 # =========================================================
 # DNA MAP
@@ -194,7 +194,7 @@ fig.add_trace(go.Scatter(
     mode="markers",
     text=dna_df["Coach"],
     hovertemplate="<b>%{text}</b><extra></extra>",
-    marker=dict(size=10, opacity=0.4),
+    marker=dict(size=10, opacity=0.4)
 ))
 
 active_point = dna_df[dna_df["Coach"] == active_coach]
@@ -218,6 +218,12 @@ st.plotly_chart(fig, use_container_width=True)
 # =========================================================
 st.subheader("Most Similar Coaches")
 
+distance_df = pd.DataFrame(
+    euclidean_distances(X),
+    index=coach_features.index,
+    columns=coach_features.index
+)
+
 if active_coach in distance_df.index:
     sims = distance_df[active_coach].sort_values().drop(active_coach).head(5)
 
@@ -231,9 +237,9 @@ if active_coach in distance_df.index:
 # =========================================================
 st.subheader("Replacement Candidates")
 
-replacements = coach_features.sort_values("xG_pct", ascending=False).head(5)
+replacement = dna_df[dna_df["Role"] == coach_role].head(5)
 
-st.dataframe(replacements.reset_index()[["Coach"]])
+st.dataframe(replacement[["Coach"]])
 
 # =========================================================
 # AI SUMMARY
@@ -241,7 +247,9 @@ st.dataframe(replacements.reset_index()[["Coach"]])
 st.subheader("Coaching Summary")
 
 st.write(f"""
-- Offensive profile is {'above' if offense_score > 50 else 'below'} adjusted baseline  
-- Defensive profile is {'strong' if defense_score > 50 else 'weak'} relative to opponent strength  
-- System grade: **{grade}**
+- Role: **{coach_role}**
+- Offensive Grade: **{off_grade}**
+- Defensive Grade: **{def_grade}**
+- System Grade: **{sys_grade}**
+- Overall Grade: **{overall_grade}**
 """)
