@@ -221,3 +221,21 @@ if not selected_row.empty:
     )
 
 st.plotly_chart(fig, use_container_width=True)
+
+st.subheader("Replacement Recommendations")
+
+if selected_coach in distance_df.index:
+
+    replacements = (
+        distance_df[selected_coach]
+        .sort_values()
+        .drop(selected_coach)
+        .head(3)
+    )
+
+    replacement_df = pd.DataFrame({
+        "Replacement Coach": replacements.index,
+        "Fit Score": (100 - replacements.values * 10).round(1)
+    })
+
+    st.dataframe(replacement_df)
