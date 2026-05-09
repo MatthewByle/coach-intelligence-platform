@@ -34,3 +34,24 @@ st.subheader("Coach Context")
 st.write("Team:", team)
 st.write("Hire Date:", hire_date)
 st.write("Fire Date:", fire_date)
+
+stats["Date"] = pd.to_datetime(stats["Date"])
+
+team_data = stats[stats["Team Name"] == team].copy()
+team_data = team_data.sort_values("Date")
+
+hire_date = pd.to_datetime(hire_date)
+
+before = team_data[team_data["Date"] < hire_date].tail(15)
+after = team_data[team_data["Date"] >= hire_date].head(15)
+
+before_xg = before["xG%"].mean()
+after_xg = after["xG%"].mean()
+
+delta = after_xg - before_xg
+
+st.subheader("System Impact (Before vs After)")
+
+st.metric("xG% Before", round(before_xg, 3))
+st.metric("xG% After", round(after_xg, 3))
+st.metric("Impact Delta", round(delta, 3))
