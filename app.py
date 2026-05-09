@@ -93,7 +93,7 @@ col1, col2, col3 = st.columns(3)
 
 col1.metric("xG% Before", round(before_xg, 3) if before_xg else "N/A")
 col2.metric("xG% After", round(after_xg, 3) if after_xg else "N/A")
-col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A"
+col3.metric("Impact Delta", round(delta, 3) if delta is not None else "N/A")
 
 stats.columns = stats.columns.str.strip()
 
