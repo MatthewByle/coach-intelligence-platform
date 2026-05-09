@@ -16,6 +16,10 @@ coaches = load_data("Coach_Registry")
 
 stats.columns = stats.columns.str.strip()
 
+stats = stats.rename(columns={"Coach": "Head Coach"})
+
+stats.columns = stats.columns.str.strip()
+
 st.title("Coach Intelligence Dashboard")
 
 st.write("Coach Registry Columns:")
@@ -117,7 +121,7 @@ st.metric("Coach Score", round(coach_score, 1))
 
 st.success(f"Coach Grade: {grade}")
 
-coach_features = stats.groupby("Coach")[[
+coach_features = stats.groupby("Head Coach")[[
     "xGF_60",
     "xGA_60",
     "xG_pct",
@@ -134,7 +138,11 @@ coach_cluster_map = coach_features["Cluster"]
 
 st.subheader("Coach DNA Map (Clustering)")
 
-selected_cluster = coach_features.loc[selected_coach, "Cluster"]
+if selected_coach in coach_features.index:
+    selected_cluster = coach_features.loc[selected_coach, "Cluster"]
+else:
+    st.error("Coach not found in DNA model")
+    selected_cluster = None
 
 st.write(f"Coach Cluster ID: {selected_cluster}")
 
@@ -145,3 +153,12 @@ st.write(cluster_coaches)
 
 st.write("Selected coach:", selected_coach)
 st.write("Coach feature index sample:", coach_features.index.tolist()[:10])
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(coach_features)
+
+kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+coach_features["Cluster"] = kmeans.fit_predict(X_scaled)
