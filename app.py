@@ -67,6 +67,18 @@ if "Date" in stats.columns:
         errors="coerce"
     )
 
+stats["Coach"] = (
+    stats["Coach"]
+    .astype(str)
+    .str.strip()
+)
+
+coaches["Head Coach"] = (
+    coaches["Head Coach"]
+    .astype(str)
+    .str.strip()
+)
+
 # =========================================================
 # SIDEBAR NAVIGATION
 # =========================================================
@@ -183,9 +195,22 @@ def get_role(cluster):
 
 dna_df["Role"] = dna_df["Cluster"].apply(get_role)
 
-coach_role = dna_df[
-    dna_df["Coach"] == selected_coach
-]["Role"].values[0]
+# =========================================================
+# SAFE ROLE LOOKUP
+# =========================================================
+
+role_lookup = dna_df[
+    dna_df["Coach"]
+    .astype(str)
+    .str.strip()
+    ==
+    str(selected_coach).strip()
+]
+
+if not role_lookup.empty:
+    coach_role = role_lookup["Role"].iloc[0]
+else:
+    coach_role = "Unknown"
 
 # =========================================================
 # SIMILARITY ENGINE
