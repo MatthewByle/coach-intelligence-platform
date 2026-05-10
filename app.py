@@ -479,11 +479,23 @@ if "Date" in stats.columns:
 
     delta = after_xg - before_xg
 
-    s1, s2, s3 = st.columns(3)
+s1, s2, s3 = st.columns(3)
 
-    s1.metric("Before", round(before_xg, 2))
-    s2.metric("After", round(after_xg, 2))
-    s3.metric("Delta", round(delta, 2))
+s1.metric(
+    "Before",
+    round(before_xg, 2)
+)
+
+s2.metric(
+    "After",
+    round(after_xg, 2)
+)
+
+s3.metric(
+    "Impact",
+    round(after_xg, 2),
+    delta=f"{delta:+.2f}"
+)
 
 # =========================================================
 # TEAM TREND
