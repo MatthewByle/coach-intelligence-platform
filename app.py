@@ -226,14 +226,18 @@ sys_pct = percentile(
 
 def to_grade(p):
 
-    if p >= 0.85:
+    if p >= 0.90:
         return "A"
-    elif p >= 0.70:
+
+    elif p >= 0.75:
         return "B"
-    elif p >= 0.55:
+
+    elif p >= 0.50:
         return "C"
-    elif p >= 0.40:
+
+    elif p >= 0.30:
         return "D"
+
     else:
         return "F"
 
