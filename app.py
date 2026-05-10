@@ -493,8 +493,7 @@ s2.metric(
 
 s3.metric(
     "Impact",
-    round(after_xg, 2),
-    delta=f"{delta:+.2f}"
+    f"{delta:+.2f}"
 )
 
 # =========================================================
