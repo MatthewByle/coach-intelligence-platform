@@ -313,11 +313,21 @@ else:
 
     replacement_df = pd.DataFrame()
 
-replacement_candidates = (
-    replacement_df["Coach"]
-    .head(5)
-    .tolist()
-)
+# =========================================================
+# SAFE REPLACEMENT CANDIDATES
+# =========================================================
+
+if not replacement_df.empty and "Coach" in replacement_df.columns:
+
+    replacement_candidates = (
+        replacement_df["Coach"]
+        .head(5)
+        .tolist()
+    )
+
+else:
+
+    replacement_candidates = []
 
 # =========================================================
 # SCORECARD
