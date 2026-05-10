@@ -164,7 +164,11 @@ coach_features = stats.groupby("Coach")[[
     "xGA_60",
     "xG_pct",
     "PDO"
-]].mean().dropna()
+]].mean()
+
+coach_features = coach_features.fillna(
+    coach_features.mean()
+)
 
 coach_features.index = (
     coach_features.index
@@ -264,14 +268,50 @@ else:
 # =========================================================
 # REPLACEMENT ENGINE
 # =========================================================
-selected_cluster = dna_df[
-    dna_df["Coach"] == selected_coach
-]["Cluster"].values[0]
+# =========================================================
+# SAFE CLUSTER LOOKUP
+# =========================================================
 
-replacement_df = dna_df[
-    (dna_df["Cluster"] == selected_cluster)
-    & (dna_df["Coach"] != selected_coach)
-].copy()
+cluster_lookup = dna_df[
+    dna_df["Coach"]
+    .astype(str)
+    .str.strip()
+    ==
+    str(selected_coach).strip()
+]
+
+if not cluster_lookup.empty:
+
+    selected_cluster = (
+        cluster_lookup["Cluster"]
+        .iloc[0]
+    )
+
+else:
+
+    st.warning(
+        f"No cluster profile found for {selected_coach}"
+    )
+
+    selected_cluster = None
+
+if selected_cluster is not None:
+
+    replacement_df = dna_df[
+        (dna_df["Cluster"] == selected_cluster)
+        &
+        (
+            dna_df["Coach"]
+            .astype(str)
+            .str.strip()
+            !=
+            str(selected_coach).strip()
+        )
+    ].copy()
+
+else:
+
+    replacement_df = pd.DataFrame()
 
 replacement_candidates = (
     replacement_df["Coach"]
