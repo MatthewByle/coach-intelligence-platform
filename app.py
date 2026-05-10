@@ -491,9 +491,15 @@ s2.metric(
     round(after_xg, 2)
 )
 
+impact_color = "normal"
+
+if delta < 0:
+    impact_color = "inverse"
+
 s3.metric(
     "Impact",
-    f"{delta:+.2f}"
+    f"{delta:+.2f}",
+    delta_color=impact_color
 )
 
 # =========================================================
