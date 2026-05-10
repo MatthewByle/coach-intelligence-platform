@@ -166,6 +166,12 @@ coach_features = stats.groupby("Coach")[[
     "PDO"
 ]].mean().dropna()
 
+coach_features.index = (
+    coach_features.index
+    .astype(str)
+    .str.strip()
+)
+
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(coach_features)
 
@@ -221,14 +227,39 @@ distance_df = pd.DataFrame(
     columns=coach_features.index
 )
 
-similarities = (
-    distance_df[selected_coach]
-    .sort_values()
-    .drop(selected_coach)
-    .head(5)
+# =========================================================
+# SAFE SIMILARITY LOOKUP
+# =========================================================
+
+selected_clean = str(selected_coach).strip()
+
+distance_df.columns = (
+    distance_df.columns.astype(str).str.strip()
 )
 
-similar_coaches = similarities.index.tolist()
+distance_df.index = (
+    distance_df.index.astype(str).str.strip()
+)
+
+if selected_clean in distance_df.columns:
+
+    similarities = (
+        distance_df[selected_clean]
+        .sort_values()
+        .drop(selected_clean)
+        .head(5)
+    )
+
+    similar_coaches = similarities.index.tolist()
+
+else:
+
+    st.warning(
+        f"No similarity profile found for {selected_clean}"
+    )
+
+    similarities = pd.Series(dtype=float)
+    similar_coaches = []
 
 # =========================================================
 # REPLACEMENT ENGINE
